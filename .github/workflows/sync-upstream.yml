@@ -18,6 +18,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Sync fork via official merge-upstream API
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           response=$(gh api \
             --method POST \
