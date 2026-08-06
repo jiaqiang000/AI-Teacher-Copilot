@@ -1,0 +1,45 @@
+name: Sync fork with upstream
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/bytedance/deer-flow.git
+          git fetch upstream main
+
+      - name: Merge upstream main
+        run: |
+          if git merge --no-edit upstream/main; then
+            echo "synced"
+          else
+            echo "::error::上游合并有冲突，需要到 fork 仓库手动处理"
+            exit 1
+          fi
+
+      - name: Push to fork
+        run: git push origin main
