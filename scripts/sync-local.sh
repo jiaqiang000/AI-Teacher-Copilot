@@ -8,6 +8,9 @@ set -uo pipefail
 REPO="/Users/luojiaqiang/code/deer-flow"
 LOG="$HOME/.deer-flow-sync.log"
 
+# GitHub 操作前开启代理（失败也不影响后续重试）
+source /Users/luojiaqiang/script/proxy_on.sh >>"$LOG" 2>&1 || true
+
 log() {
   printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG"
 }
