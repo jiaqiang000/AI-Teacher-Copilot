@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: Sync fork via official merge-upstream API
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.SYNC_PAT }}
         run: |
           response=$(gh api \
             --method POST \
