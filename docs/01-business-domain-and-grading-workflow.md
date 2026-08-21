@@ -80,6 +80,9 @@
                     Qwen 小模型
                  难度 / 复杂度识别
                            ↓
+              difficulty: easy / medium / hard
+                   reason: 一句话说明
+                           ↓
                   按学科 / 题型路由
                       ↙         ↘
                    Math        English
@@ -98,7 +101,7 @@
 其中：
 
 - `subject` 和 `question_type` 由教师创建 `Question` 时确定，批改 Workflow 直接读取，不再让模型重复识别。
-- `difficulty` / 题目复杂度不要求教师填写，由 Qwen 小模型在批改前自动判断，用于后续模型路由。
+- `difficulty` / 题目复杂度不要求教师填写，由 Qwen 小模型在批改前自动判断，输出 `easy / medium / hard` 以及一句简短判断原因，用于后续模型路由。
 - `knowledge_points` 不要求教师逐题标注，由批改模型根据题目、学生作答和批改过程自动识别，并进入最终 `GradingResult`。
 
 ---
@@ -321,12 +324,16 @@ OCR
     ↓
 Qwen 小模型识别 difficulty / complexity
     ↓
+输出：easy / medium / hard + reason
+    ↓
 
 如果 Math
     ↓
 Math Grading Workflow
-    ├── 简单 → 小模型
-    └── 困难 → 强模型
+    ├── easy / medium → 小模型快速批改
+    └── hard → 强模型批改
+             ↓
+      输出：对错 + 得分 + 过程分 + 错误诊断
 
 如果 English Essay
     ↓
