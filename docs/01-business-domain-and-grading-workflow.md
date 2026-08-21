@@ -74,7 +74,13 @@
                            ↓
                     结构化内容识别
                            ↓
-                  学科 / 题型路由
+              读取 Question 业务属性
+               subject / question_type
+                           ↓
+                    Qwen 小模型
+                 难度 / 复杂度识别
+                           ↓
+                  按学科 / 题型路由
                       ↙         ↘
                    Math        English
                     ↓             ↓
@@ -88,6 +94,12 @@
 ```
 
 这构成当前整个学生批改业务闭环。
+
+其中：
+
+- `subject` 和 `question_type` 由教师创建 `Question` 时确定，批改 Workflow 直接读取，不再让模型重复识别。
+- `difficulty` / 题目复杂度不要求教师填写，由 Qwen 小模型在批改前自动判断，用于后续模型路由。
+- `knowledge_points` 不要求教师逐题标注，由批改模型根据题目、学生作答和批改过程自动识别，并进入最终 `GradingResult`。
 
 ---
 
@@ -110,9 +122,6 @@ Submission ← Student
    │
    ↓
 GradingResult
-   │
-   ↓
-KnowledgePoint
 ```
 
 核心对象职责如下：
@@ -126,9 +135,10 @@ KnowledgePoint
 | `Question` | 作业中的一道题 |
 | `Submission` | 一个学生对一道题的一次提交 |
 | `GradingResult` | 这次提交经过完整 Workflow 后的最终批改结果 |
-| `KnowledgePoint` | 题目及批改结果对应的知识点 |
 
 其中最关键的是 `Question`、`Submission` 和 `GradingResult`。
+
+知识点不作为教师必须维护的前置业务对象。当前 MVP 中，知识点由批改模型自动识别，并作为 `GradingResult` 中的结构化诊断结果沉淀；后续如果引入统一知识点体系，再增加知识点标准化与映射层。
 
 ---
 
@@ -195,10 +205,6 @@ x = 2
 
 max_score:
 10
-
-knowledge_points:
-- 一元一次方程
-- 移项
 ```
 
 后续还可以增加：
@@ -206,8 +212,9 @@ knowledge_points:
 ```text
 reference_solution
 grading_rubric
-difficulty
 ```
+
+`difficulty` 不要求教师维护，由 Qwen 小模型在批改 Workflow 中自动识别。
 
 ### 5.2 英语作文 Question
 
@@ -243,7 +250,7 @@ Question
 └── question_type
 ```
 
-后面的 Router 才能稳定工作。
+后面的 Workflow 直接依据这些业务属性路由，不再使用 LLM 重复识别学科和题型。
 
 ---
 
@@ -310,7 +317,9 @@ OCR
     ↓
 结构化解析
     ↓
-Qwen 小模型识别题型 / 难度
+读取 Question.subject / question_type
+    ↓
+Qwen 小模型识别 difficulty / complexity
     ↓
 
 如果 Math
@@ -339,6 +348,8 @@ Rubric
 
 全部属于 **Grading Workflow 内部实现**，业务层不需要感知内部进行了多少模型调用或 Agent 步骤。
 
+知识点、错误类型、错误原因等诊断信息由批改模型在 Workflow 中自动识别，不要求教师预先逐题标注。
+
 ---
 
 ## 8. Workflow 最终只输出一个 GradingResult
@@ -359,116 +370,13 @@ GradingResult
 
 ---
 
-## 9. GradingResult 兼容数学与英语
+## 9. GradingResult 边界
 
-不要为数学和英语维护两套完全独立的数据体系，统一使用公共 `GradingResult`。
+`GradingResult` 是完整 Grading Workflow 对外输出的唯一最终批改结果，需要同时兼容数学和英语作文，并为后续学生画像、班级学情分析和 Teacher Agent 提供稳定的结构化数据基础。
 
-公共字段：
+本文件只定义 `GradingResult` 在业务流程中的位置与职责，不在这里展开具体字段设计。
 
-```text
-GradingResult
-│
-├── grading_result_id
-├── submission_id
-│
-├── subject
-├── question_type
-│
-├── score
-├── max_score
-├── score_rate
-│
-├── knowledge_points
-├── error_types
-├── error_reason
-│
-├── feedback
-│
-├── difficulty
-├── grading_model
-└── created_at
-```
-
-不同题型可以增加自己的详细结果。
-
-### 9.1 数学扩展信息
-
-例如：
-
-```json
-{
-  "subject": "math",
-
-  "score": 8,
-  "max_score": 10,
-  "correct": false,
-
-  "knowledge_points": [
-    "一元一次方程",
-    "移项"
-  ],
-
-  "error_types": [
-    "符号错误"
-  ],
-
-  "error_reason": "移项时符号处理错误",
-
-  "process": {
-    "process_score": 6,
-    "final_answer_score": 2
-  },
-
-  "feedback": "解题思路正确，但移项时需要注意符号变化。"
-}
-```
-
-### 9.2 英语作文扩展信息
-
-```json
-{
-  "subject": "english",
-
-  "score": 16,
-  "max_score": 20,
-
-  "knowledge_points": [
-    "一般过去时",
-    "连接词"
-  ],
-
-  "error_types": [
-    "时态错误",
-    "连接词使用不足"
-  ],
-
-  "dimension_scores": {
-    "content": 5,
-    "organization": 4,
-    "grammar": 3,
-    "vocabulary": 4
-  },
-
-  "feedback": "内容完整，但过去时使用存在多处错误，段落之间可以增加连接词。"
-}
-```
-
-这样后续学生画像可以同时覆盖：
-
-```text
-Student
-│
-├── Math
-│   ├── 一元一次方程
-│   ├── 因式分解
-│   └── 函数
-│
-└── English
-    ├── Grammar
-    ├── Vocabulary
-    ├── Organization
-    └── Writing
-```
+> `GradingResult` 的完整 Schema、公共字段、数学扩展字段、英语作文扩展字段以及哪些字段用于后续数据沉淀，统一在 `docs/02-grading-result-schema.md` 中定义。
 
 ---
 
@@ -498,6 +406,6 @@ MySQL
 
 - `Teacher / Student / Class / Homework / Question` 定义业务上下文。
 - `Submission` 表示学生的一次真实提交。
-- `Grading Workflow` 负责 OCR、模型路由以及数学或英语作文的具体批改过程。
+- `Grading Workflow` 负责 OCR、难度识别、模型路由以及数学或英语作文的具体批改过程。
 - `GradingResult` 是整个 Workflow 对外输出的唯一最终批改结果。
 - `MySQL` 保存业务事实，为后续学生画像、班级学情分析和 Teacher Agent 提供可信数据基础。
