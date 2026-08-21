@@ -2,7 +2,7 @@
 
 ## 1. Tool 与 Skill 的职责边界
 
-Teacher Agent 当前定义的 7 个核心业务能力全部实现为 Tool，不实现为 Skill；在这些 Tool 之上定义 5 个 Skill，用于完成稳定、可复用的复杂教学任务。
+Teacher Agent 完整能力规划包含 7 个 Tool 和 5 个 Skill。7 个 Tool 负责原子业务能力，5 个 Skill 用于完成稳定、可复用的复杂教学任务。
 
 ```text
 Teacher Agent
@@ -24,6 +24,23 @@ Teacher Agent
     └── search_question_bank
 ```
 
+当前阶段暂不建设 RAG / Teaching Knowledge Base（教学知识库），因此：
+
+```text
+完整规划
+7 Tools + 5 Skills
+
+当前阶段实现
+6 Tools + 4 Skills
+
+暂缓实现
+├── search_teaching_materials
+└── personalized-intervention
+    └── 依赖 search_teaching_materials
+```
+
+暂缓能力的 Tool Contract 与 Skill SOP 继续保留在本文中，待后续建设教学资料检索能力后启用。
+
 职责划分：
 
 ```text
@@ -35,8 +52,6 @@ Skill
 = 教学任务 SOP
 = 规定如何组合多个 Tool、如何分析结果、如何生成最终输出
 ```
-
-7 个 Tool 负责提供数据查询、即时分析和资源检索能力；5 个 Skill 负责在复杂教师任务中稳定组合这些 Tool。
 
 简单问题可以直接调用单个 Tool：
 
@@ -71,9 +86,9 @@ Skill 不新增业务事实，不修改 03–05 已确定的数据模型，也�
 
 ---
 
-## 2. 5 个 Skill 的最终设计
+## 2. 5 个 Skill 的完整设计
 
-5 个 Skill 覆盖 Teacher Copilot 的完整教师任务链路：
+完整规划中的 5 个 Skill 覆盖 Teacher Copilot 的教师任务链路：
 
 ```text
 发现问题
@@ -245,7 +260,9 @@ vs
 
 ---
 
-### 2.4 `personalized-intervention`（个性化教学干预）
+### 2.4 `personalized-intervention`（个性化教学干预）【本阶段暂缓】
+
+> 本阶段暂不实现该 Skill。该流程依赖 `search_teaching_materials` 提供教学资料检索能力，而当前阶段暂不建设 RAG / Teaching Knowledge Base。本文保留完整 SOP，待后续引入教学资料检索能力后启用。
 
 目标：基于学生长期画像和历史证据，为单个学生生成有针对性的教学干预方案。
 
@@ -384,7 +401,7 @@ summary-generation
 - 薄弱点分析和错误分析属于现有 Skill 的内部步骤。
 - 报告和总结属于 Skill 的输出阶段，不构成独立教学任务流程。
 
-Skill 数量固定为 5 个，后续 Multi-Agent 设计直接基于这 5 个 Skill 展开。
+完整能力规划固定为 5 个 Skill；当前阶段实现其中 4 个，`personalized-intervention` 因依赖暂缓的 RAG 教学资料检索能力而暂缓实现。
 
 ---
 
@@ -429,7 +446,7 @@ Tool 名称统一遵循：
 - 名称能够直接体现业务作用。
 - 一个 Tool 对应一个清晰业务对象或原子能力。
 
-当前 7 个名称保持不变：
+完整规划中的 7 个名称保持不变：
 
 ```text
 get_student_profile
@@ -440,6 +457,8 @@ get_question_analysis
 search_teaching_materials
 search_question_bank
 ```
+
+其中 `search_teaching_materials` 本阶段暂缓实现。
 
 ---
 
@@ -616,6 +635,8 @@ Repository
 Redis / MySQL / RAG
 ```
 
+其中 RAG 属于后续 `search_teaching_materials` 的规划数据源，不进入当前阶段实现。
+
 ```text
 get_student_profile Tool
         ↓
@@ -629,7 +650,7 @@ StudentProfileService
 
 ## 9. data_source（数据源）
 
-7 个 Tool 的数据来源固定如下：
+完整规划中 7 个 Tool 的数据来源如下：
 
 | Tool | 数据来源 |
 |---|---|
@@ -638,7 +659,7 @@ StudentProfileService
 | `get_class_profile` | Redis → Miss 后基于 MySQL 重算 |
 | `get_homework_analysis` | MySQL 即时聚合 |
 | `get_question_analysis` | MySQL 即时聚合 |
-| `search_teaching_materials` | RAG / 教材知识库 |
+| `search_teaching_materials` | 后续：RAG / 教材知识库（本阶段暂缓） |
 | `search_question_bank` | MySQL Question Database（题库） |
 
 ---
@@ -731,7 +752,7 @@ DATA_SOURCE_ERROR（数据源异常）
 
 ## 12. tests（测试）
 
-每个 Tool 至少覆盖以下测试：
+每个当前实现的 Tool 至少覆盖以下测试：
 
 ```text
 正常查询
@@ -764,7 +785,7 @@ Argument Generation Accuracy（参数生成准确率）
 Tool Execution Success Rate（工具执行成功率）
 ```
 
-Skill 还需要增加流程级评测：
+当前实现的 4 个 Skill 还需要增加流程级评测：
 
 ```text
 Skill Routing Accuracy（Skill 选择准确率）
@@ -776,7 +797,7 @@ Task Completion Rate（任务完成率）
 
 ---
 
-## 13. 7 个 Tool 的最终职责
+## 13. 7 个 Tool 的完整职责
 
 ### 13.1 `get_student_profile`
 
@@ -909,7 +930,9 @@ representative_errors（典型错误证据）
 
 ---
 
-### 13.6 `search_teaching_materials`
+### 13.6 `search_teaching_materials`【本阶段暂缓】
+
+> 本阶段暂不实现。当前阶段不建设 RAG / Teaching Knowledge Base，仅保留该 Tool 的完整 Contract，待后续知识检索能力建设时启用。
 
 作用：根据教学问题、学科和知识点检索教学材料。
 
@@ -923,7 +946,7 @@ grade（年级）                           可选
 输出
 TeachingMaterial[]
 
-数据来源
+规划数据来源
 教材知识库 / RAG
 ```
 
@@ -977,14 +1000,14 @@ Question
 
 ### 14.1 Tool 注册
 
-自定义 Tool 在 DeerFlow 中注册到 Tool 配置，并按业务能力分组。
+当前阶段只注册实际实现的 6 个 Tool。`search_teaching_materials` 的注册配置留到后续 RAG / Teaching Knowledge Base 实现时再加入。
 
 ```text
 teacher:data
 teacher:resource
 ```
 
-示意配置：
+当前阶段示意配置：
 
 ```yaml
 tool_groups:
@@ -1012,20 +1035,24 @@ tools:
     group: teacher:data
     use: teacher_copilot.tools.analysis:get_question_analysis
 
-  - name: search_teaching_materials
-    group: teacher:resource
-    use: teacher_copilot.tools.resource:search_teaching_materials
-
   - name: search_question_bank
     group: teacher:resource
     use: teacher_copilot.tools.resource:search_question_bank
 ```
 
+后续实现 `search_teaching_materials` 后，再补充：
+
+```yaml
+- name: search_teaching_materials
+  group: teacher:resource
+  use: teacher_copilot.tools.resource:search_teaching_materials
+```
+
 ### 14.2 Skill 实现
 
-5 个 Skill 使用独立 `SKILL.md` 描述任务目标、Tool 使用规则、分析流程和输出要求。
+当前阶段实现 4 个 `SKILL.md`；`personalized-intervention` 的设计保留，但不进入当前 Skill 注册与执行范围。
 
-逻辑目录：
+当前阶段逻辑目录：
 
 ```text
 skills/
@@ -1035,9 +1062,15 @@ skills/
 │   └── SKILL.md
 ├── homework-review/
 │   └── SKILL.md
-├── personalized-intervention/
-│   └── SKILL.md
 └── differentiated-practice/
+    └── SKILL.md
+```
+
+后续启用教学资料检索能力后再增加：
+
+```text
+skills/
+└── personalized-intervention/
     └── SKILL.md
 ```
 
@@ -1060,6 +1093,8 @@ Skill 不直接访问 MySQL、Redis 或 RAG，只通过 Tool 获取数据和资�
 
 ## 15. 推荐代码结构
 
+当前阶段：
+
 ```text
 teacher_copilot/
 │
@@ -1080,20 +1115,30 @@ teacher_copilot/
 │   ├── class_profile_service.py
 │   ├── homework_analysis_service.py
 │   ├── question_analysis_service.py
-│   ├── teaching_material_service.py
 │   └── question_bank_service.py
 │
 ├── repositories/
 │   ├── mysql/
-│   ├── redis/
-│   └── rag/
+│   └── redis/
 │
 └── skills/
     ├── student-diagnosis/
     ├── class-learning-analysis/
     ├── homework-review/
-    ├── personalized-intervention/
     └── differentiated-practice/
+```
+
+后续 RAG / Teaching Knowledge Base 阶段再增加：
+
+```text
+services/
+└── teaching_material_service.py
+
+repositories/
+└── rag/
+
+skills/
+└── personalized-intervention/
 ```
 
 职责边界：
@@ -1119,7 +1164,7 @@ Skill
 
 ## 16. Tool、Skill 与后续 Multi-Agent 的边界
 
-当前阶段已经确定：
+完整能力规划：
 
 ```text
 7 个 Tools
@@ -1130,6 +1175,18 @@ Teacher Agent
   ↓
 Multi-Agent
 ```
+
+当前阶段实现：
+
+```text
+6 个 Tools
+  ↓
+4 个 Skills
+  ↓
+Teacher Agent
+```
+
+其中 `search_teaching_materials` 与 `personalized-intervention` 留待后续 RAG / Teaching Knowledge Base 阶段实现。
 
 Tool 负责原子业务能力；Skill 负责稳定教学任务 SOP；后续 Multi-Agent 负责在更复杂任务中划分不同 Agent 的职责和协作关系。
 
