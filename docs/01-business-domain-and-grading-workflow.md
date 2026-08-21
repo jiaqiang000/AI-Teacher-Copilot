@@ -11,7 +11,7 @@
 
 学科
 ├── Math
-└── English（中文）
+└── English
 ```
 
 当前 MVP：
