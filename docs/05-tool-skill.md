@@ -103,8 +103,8 @@ Skill 不新增业务事实，不修改 03–05 已确定的数据模型，也�
 主要 Tool：
 
 ```text
-get_student_profile
-get_student_grading_history
+get_student_profile（查询学生画像：获取长期学习状态、薄弱点、趋势等）
+get_student_grading_history（查询批改历史：获取真实历史作答与批改记录）
 ```
 
 固定 SOP：
@@ -150,8 +150,8 @@ get_student_grading_history
 主要 Tool：
 
 ```text
-get_class_profile
-get_student_profile（必要时下钻重点学生）
+get_class_profile（查询班级画像：获取班级整体表现、薄弱点、共性错误等）
+get_student_profile（查询学生画像：必要时下钻重点学生的长期学习状态）
 ```
 
 固定 SOP：
@@ -201,9 +201,9 @@ homework-review
 主要 Tool：
 
 ```text
-get_homework_analysis
-get_question_analysis
-get_class_profile
+get_homework_analysis（查询作业分析：分析一次作业的整体表现和关键问题）
+get_question_analysis（查询题目分析：下钻分析某道题的错误率和错误原因）
+get_class_profile（查询班级画像：判断当前问题是否属于班级长期薄弱问题）
 ```
 
 固定 SOP：
@@ -252,10 +252,10 @@ vs
 主要 Tool：
 
 ```text
-get_student_profile
-get_student_grading_history
-search_teaching_materials
-search_question_bank
+get_student_profile（查询学生画像：定位学生长期薄弱点和学习趋势）
+get_student_grading_history（查询批改历史：获取历史证据并验证薄弱点）
+search_teaching_materials（检索教学材料：查找知识点相关讲解和教学资源）
+search_question_bank（检索题库：按知识点、难度和题型匹配巩固练习）
 ```
 
 固定 SOP：
@@ -308,9 +308,9 @@ personalized-intervention
 主要 Tool：
 
 ```text
-get_class_profile
-get_student_profile（必要时）
-search_question_bank
+get_class_profile（查询班级画像：获取班级整体掌握情况和学生分布）
+get_student_profile（查询学生画像：必要时下钻单个学生的掌握情况）
+search_question_bank（检索题库：按知识点、难度和题型匹配分层练习）
 ```
 
 固定 SOP：
