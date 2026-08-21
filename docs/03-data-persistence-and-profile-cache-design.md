@@ -2,141 +2,30 @@
 
 ## 1. 设计目标
 
-本阶段解决的问题是：一次 `Submission` 完成批改并生成 `GradingResult` 后，如何把题目级事实可靠沉淀下来，并进一步生成学生画像和班级学情画像。
-
-核心数据链路固定为：
+一次 `Submission` 完成批改后，`GradingResult` 作为题目级事实写入 MySQL；系统再定时基于 MySQL 中的历史事实计算学生画像和班级画像，并缓存到 Redis。
 
 ```text
 GradingResult
     ↓
-MySQL：题目级业务事实
+MySQL（唯一事实源）
     ↓
-定时聚合计算
+定时聚合
     ├── Student Profile（学生画像）
     └── Class Profile（班级画像）
               ↓
             Redis
 ```
 
-当前设计明确：
-
-> **MySQL 只保存原始业务事实，不保存 Student Profile / Class Profile 这类聚合结果。画像由 MySQL 中的事实数据计算得到，并缓存到 Redis；Redis 中的数据可以删除、过期、重算。**
+> **MySQL 保存事实，Redis 缓存聚合结果。Student Profile / Class Profile 不持久化到 MySQL，可随时基于事实数据重算。**
 
 ---
 
 ## 2. 核心原则
 
-### 2.1 MySQL 是唯一事实源
-
-系统中真实发生过的业务行为和批改结果必须进入 MySQL。
-
-包括：
-
-```text
-Teacher
-Student
-Class
-Homework
-Question
-Submission
-GradingResult
-```
-
-其中本阶段最核心的是：
-
-```text
-Submission
-    ↓
-GradingResult
-```
-
-`GradingResult` 表示一次真实批改产生的题目级事实。
-
-例如：
-
-```text
-Submission sub_10001
-    ↓
-GradingResult gr_10001
-
-score（得分） = 8 / 10
-difficulty（难度） = medium
-
-knowledge_points（知识点）
-├── 一元一次方程 → correct
-└── 移项 → incorrect
-
-errors（错误）
-└── SIGN_ERROR
-```
-
-这些事实一旦产生，就不能因为学生后续学习状态变化而被覆盖。
-
-例如学生后来掌握了“移项”，也不能把历史记录中的：
-
-```text
-移项 → incorrect
-```
-
-改成：
-
-```text
-移项 → correct
-```
-
-因为历史 `GradingResult` 记录的是**当时真实发生的批改结果**。
-
-### 2.2 Grading Record 不单独设计成新的业务对象
-
-文档中如果出现 `Grading Record`，它表示：
-
-```text
-GradingResult
-    ↓
-持久化到 MySQL
-    ↓
-题目级批改事实记录
-```
-
-因此当前系统不再额外增加一个与 `GradingResult` 平行的 `GradingRecord` 业务对象。
-
-### 2.3 Student Profile / Class Profile 都是派生数据
-
-```text
-GradingResult
-= 这一次做得怎么样
-
-Student Profile
-= 这个学生长期学得怎么样
-
-Class Profile
-= 这个班整体学得怎么样
-```
-
-后两者都不是事实源，而是根据 MySQL 中历史事实计算得到的结果。
-
-因此它们允许：
-
-```text
-更新
-重新计算
-算法升级后整体重算
-Redis 丢失后重建
-```
-
-### 2.4 Class Profile 不依赖 Redis 中的 Student Profile 作为事实源
-
-逻辑上可以理解为：
-
-```text
-GradingResult
-    ↓
-Student Profile
-    ↓
-Class Profile
-```
-
-但工程实现中，为了避免画像缓存之间相互依赖、放大过期数据，两个画像都以 MySQL 为最终计算依据：
+1. **MySQL 是唯一事实源。** `Submission`、`GradingResult` 以及其中的得分、知识点表现、错误等真实批改事实写入 MySQL，历史事实不因后续画像变化而修改。
+2. **Grading Record 不新增独立业务对象。** 它就是 `GradingResult` 持久化后的题目级批改记录。
+3. **Student Profile / Class Profile 是派生数据。** 两者均从 MySQL 历史 `GradingResult` 聚合得到，只缓存到 Redis，可更新、过期、删除和重算。
+4. **两个 Profile 都以 MySQL 为计算依据。** `Class Profile` 不依赖 Redis 中的 `Student Profile` 作为事实源，避免缓存之间相互依赖。
 
 ```text
                   MySQL
@@ -147,8 +36,6 @@ Class Profile
        ↓                        ↓
      Redis                    Redis
 ```
-
-`Class Profile` 可以复用同一套聚合逻辑，但不能把 Redis 中的 `Student Profile` 当作不可替代的数据源。
 
 ---
 
