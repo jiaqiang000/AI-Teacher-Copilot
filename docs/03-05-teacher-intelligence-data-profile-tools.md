@@ -444,7 +444,9 @@ LLM
 
 ## 5. Teacher Agent Tools（教师 Agent 工具）
 
-Teacher Agent 对业务数据的访问统一通过 7 个核心 Tool（工具）完成。Tool 按业务对象和能力边界划分，不按单个统计字段拆分。
+Teacher Agent 完整能力规划包含 7 个核心 Tool（工具）。Tool 按业务对象和能力边界划分，不按单个统计字段拆分。
+
+当前阶段暂不建设 RAG / Teaching Knowledge Base，因此 `search_teaching_materials` 仅保留 Tool Contract，不进入当前实现范围。当前阶段实际实现其余 6 个 Tool。
 
 ---
 
@@ -664,7 +666,9 @@ MySQL
 
 ---
 
-### 5.6 `search_teaching_materials`
+### 5.6 `search_teaching_materials`【本阶段暂缓】
+
+> 本阶段暂不实现该 Tool。当前阶段不建设 RAG / Teaching Knowledge Base（教学知识库），因此仅保留接口与职责设计，待后续引入教学资料检索能力后再启用。
 
 **作用**
 
@@ -690,7 +694,7 @@ TeachingMaterial[]（教学材料列表）
 └── source（来源）
 ```
 
-**数据来源**
+**规划数据来源**
 
 ```text
 教材知识库 / RAG
@@ -770,7 +774,7 @@ MySQL Question Database（题库）
 ├── get_class_profile
 ├── get_homework_analysis
 ├── get_question_analysis
-├── search_teaching_materials
+├── search_teaching_materials（后续 / 本阶段暂缓）
 └── search_question_bank
           │
           ↓
