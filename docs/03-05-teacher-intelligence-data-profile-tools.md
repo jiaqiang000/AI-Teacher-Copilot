@@ -498,7 +498,6 @@ MySQL 重算
 
 ```text
 student_id（学生ID）                  必填
-
 subject（学科）                       可选
 knowledge_point_key（知识点标识）     可选
 error_code（错误类型）                可选
@@ -734,9 +733,7 @@ Question[]（题目列表）
 **数据来源**
 
 ```text
-Question Database（题库）
-/
-RAG
+MySQL Question Database（题库）
 ```
 
 ---
@@ -777,7 +774,7 @@ RAG
 └── search_question_bank
           │
           ↓
-06 Skills + Agent Memory
+06 Agent Memory
           ↓
 07 Multi-Agent
 ```
