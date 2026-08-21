@@ -639,7 +639,7 @@ StudentProfileService
 | `get_homework_analysis` | MySQL 即时聚合 |
 | `get_question_analysis` | MySQL 即时聚合 |
 | `search_teaching_materials` | RAG / 教材知识库 |
-| `search_question_bank` | Question Database（题库）/ RAG |
+| `search_question_bank` | MySQL Question Database（题库） |
 
 ---
 
@@ -956,7 +956,7 @@ exclude_question_ids（排除题目）      可选
 Question[]
 
 数据来源
-Question Database（题库）/ RAG
+MySQL Question Database（题库）
 ```
 
 返回结构：
