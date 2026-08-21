@@ -20,6 +20,8 @@ GradingResult
 
 因此 `GradingResult` 不能只保存一段自然语言评语，而必须同时保存**结构化诊断结果 + 展示型文本反馈**。
 
+> 文档中的逻辑结构图、字段清单和字段说明统一采用 `field_name（中文含义）` 的形式。为了保证 JSON 示例仍然是合法、可直接用于程序实现的 JSON，JSON Key 本身保持英文原字段名不变。
+
 ---
 
 ## 2. 核心原则
@@ -44,11 +46,11 @@ Workflow 内部即使发生多个模型调用、Evidence Extraction、Scoring、
 
 ```text
 GradingResult
-├── common fields
-├── diagnosis
-├── feedback
-├── math_detail            可选
-└── english_essay_detail   可选
+├── common fields（公共字段）
+├── diagnosis（结构化诊断）
+├── feedback（当前题即时反馈）
+├── math_detail（数学详情）                可选
+└── english_essay_detail（英语作文详情）   可选
 ```
 
 ### 2.3 知识点由模型自动识别
@@ -67,9 +69,9 @@ Question + Student Answer
 
 知识点是模型产生的结构化诊断结果。
 
-为了支持后续统计，不能长期依赖完全自由的自然语言名称。当前 Schema 同时保留 `name` 和可标准化的 `key`；知识点标准化、同义词归一和知识体系映射在后续数据沉淀阶段处理。
+为了支持后续统计，不能长期依赖完全自由的自然语言名称。当前 Schema 同时保留 `name（知识点名称）` 和可标准化的 `key（知识点标识）`；知识点标准化、同义词归一和知识体系映射在后续数据沉淀阶段处理。
 
-### 2.4 difficulty 由小模型自动识别
+### 2.4 difficulty（难度）由小模型自动识别
 
 教师不需要填写题目难度。
 
@@ -78,7 +80,7 @@ Question
    ↓
 Qwen 小模型
    ↓
-difficulty / complexity
+difficulty（难度） / complexity（复杂度）
    ↓
 模型路由
 ```
@@ -87,7 +89,7 @@ difficulty / complexity
 
 ### 2.5 GradingResult 只保存“当前这次批改”的反馈
 
-`feedback` 表示针对当前 Submission 的即时反馈。
+`feedback（当前题即时反馈）` 表示针对当前 Submission 的即时反馈。
 
 例如：
 
@@ -108,35 +110,35 @@ difficulty / complexity
 ```text
 GradingResult
 │
-├── grading_result_id
-├── submission_id
+├── grading_result_id（批改结果ID）
+├── submission_id（学生提交ID）
 │
-├── subject
-├── question_type
-├── difficulty
+├── subject（学科）
+├── question_type（题型）
+├── difficulty（难度）
 │
-├── score
-│   ├── earned
-│   ├── max
-│   └── rate
+├── score（得分信息）
+│   ├── earned（实际得分）
+│   ├── max（满分）
+│   └── rate（得分率）
 │
-├── diagnosis
-│   ├── knowledge_points[]
-│   └── errors[]
+├── diagnosis（结构化诊断）
+│   ├── knowledge_points[]（知识点列表）
+│   └── errors[]（错误列表）
 │
-├── feedback
-│   ├── summary
-│   ├── strengths[]
-│   └── improvements[]
+├── feedback（当前题即时反馈）
+│   ├── summary（总体评价）
+│   ├── strengths[]（做得好的地方）
+│   └── improvements[]（需要改进的地方）
 │
-├── math_detail                 可选
-├── english_essay_detail        可选
+├── math_detail（数学详情）                    可选
+├── english_essay_detail（英语作文详情）       可选
 │
-├── execution_meta
-│   ├── route
-│   └── models_used[]
+├── execution_meta（执行元数据）
+│   ├── route（模型路由结果）
+│   └── models_used[]（实际使用的模型列表）
 │
-└── created_at
+└── created_at（创建时间）
 ```
 
 ---
@@ -159,17 +161,17 @@ GradingResult
 
 | 字段 | 含义 |
 |---|---|
-| `grading_result_id` | 最终批改结果 ID |
-| `submission_id` | 对应哪一次学生提交 |
-| `subject` | `math` / `english` |
-| `question_type` | 如 `calculation` / `solution` / `essay` |
-| `difficulty` | 小模型识别出的题目难度，如 `easy` / `medium` / `hard` |
+| `grading_result_id（批改结果ID）` | 最终批改结果 ID |
+| `submission_id（学生提交ID）` | 对应哪一次学生提交 |
+| `subject（学科）` | `math` / `english` |
+| `question_type（题型）` | 如 `calculation` / `solution` / `essay` |
+| `difficulty（难度）` | 小模型识别出的题目难度，如 `easy` / `medium` / `hard` |
 
-`student_id`、`question_id`、`homework_id` 不需要在逻辑 Schema 中重复保存，通过 `submission_id` 可以关联获得。是否在数据库层做冗余字段优化，留到数据库设计阶段决定。
+`student_id（学生ID）`、`question_id（题目ID）`、`homework_id（作业ID）` 不需要在逻辑 Schema 中重复保存，通过 `submission_id（学生提交ID）` 可以关联获得。是否在数据库层做冗余字段优化，留到数据库设计阶段决定。
 
 ---
 
-## 5. Score
+## 5. Score（得分信息）
 
 统一使用：
 
@@ -186,23 +188,23 @@ GradingResult
 其中：
 
 ```text
-earned = 实际得分
-max    = 满分
-rate   = earned / max
+earned（实际得分） = 实际得分
+max（满分）         = 满分
+rate（得分率）      = earned / max
 ```
 
-后续学生画像和班级统计优先使用结构化 `score.rate`，而不是从自然语言评语中提取成绩信息。
+后续学生画像和班级统计优先使用结构化 `score.rate（得分率）`，而不是从自然语言评语中提取成绩信息。
 
 ---
 
-## 6. Diagnosis：结构化诊断
+## 6. Diagnosis（结构化诊断）
 
 这是 `GradingResult` 最重要的沉淀部分。
 
 ```text
-diagnosis
-├── knowledge_points
-└── errors
+diagnosis（结构化诊断）
+├── knowledge_points（知识点列表）
+└── errors（错误列表）
 ```
 
 这些字段主要服务于后续：
@@ -214,7 +216,7 @@ diagnosis
 Teacher Agent 查询
 ```
 
-### 6.1 KnowledgePoint
+### 6.1 KnowledgePoint（知识点）
 
 建议每个知识点不是简单字符串，而是：
 
@@ -231,17 +233,17 @@ Teacher Agent 查询
 
 | 字段 | 含义 |
 |---|---|
-| `key` | 可归一化的知识点标识；当前可以由模型输出，后续统一映射 |
-| `name` | 面向人的知识点名称 |
-| `performance` | 当前这道题上该知识点表现 |
-| `evidence` | 为什么判断该知识点表现如此 |
+| `key（知识点标识）` | 可归一化的知识点标识；当前可以由模型输出，后续统一映射 |
+| `name（知识点名称）` | 面向人的知识点名称 |
+| `performance（当前表现）` | 当前这道题上该知识点表现 |
+| `evidence（判断证据）` | 为什么判断该知识点表现如此 |
 
-`performance` 建议限制为：
+`performance（当前表现）` 建议限制为：
 
 ```text
-correct
-partial
-incorrect
+correct（正确）
+partial（部分正确）
+incorrect（错误）
 ```
 
 注意：
@@ -250,7 +252,7 @@ incorrect
 
 长期薄弱点必须由多次 `GradingResult` 聚合得到。
 
-### 6.2 Error
+### 6.2 Error（错误）
 
 建议统一结构：
 
@@ -268,17 +270,17 @@ incorrect
 
 | 字段 | 含义 |
 |---|---|
-| `code` | 用于程序统计的标准错误类型 |
-| `type` | 面向教师/学生的名称 |
-| `knowledge_point_key` | 错误关联到哪个知识点 |
-| `description` | 错误原因描述 |
-| `evidence` | 从学生作答中找到的证据 |
+| `code（错误编码）` | 用于程序统计的标准错误类型 |
+| `type（错误类型）` | 面向教师/学生的名称 |
+| `knowledge_point_key（关联知识点标识）` | 错误关联到哪个知识点 |
+| `description（错误描述）` | 错误原因描述 |
+| `evidence（错误证据）` | 从学生作答中找到的证据 |
 
-后续班级统计应该优先统计 `code`，而不是统计自然语言 `description`。
+后续班级统计应该优先统计 `code（错误编码）`，而不是统计自然语言 `description（错误描述）`。
 
 ---
 
-## 7. Feedback：当前题即时反馈
+## 7. Feedback（当前题即时反馈）
 
 ```json
 {
@@ -297,13 +299,13 @@ incorrect
 这里明确区分：
 
 ```text
-summary
+summary（总体评价）
 → 当前题整体评价
 
-strengths
+strengths（做得好的地方）
 → 当前题做得好的地方
 
-improvements
+improvements（需要改进的地方）
 → 当前题需要改进的地方
 ```
 
@@ -319,7 +321,7 @@ Student Profile
 近期历史记录
 ```
 
-动态生成，而不是直接把当前 `feedback` 当成长画像。
+动态生成，而不是直接把当前 `feedback（当前题即时反馈）` 当成长画像。
 
 ---
 
@@ -328,11 +330,14 @@ Student Profile
 数学题需要额外表达最终答案和过程分。
 
 ```text
-math_detail
-├── correct
-├── final_answer
-├── reference_answer
-└── process
+math_detail（数学详情）
+├── correct（最终答案是否正确）
+├── final_answer（学生最终答案）
+├── reference_answer（参考答案）
+└── process（解题过程信息）
+    ├── score（过程得分）
+    ├── max_score（过程满分）
+    └── analysis（过程分析）
 ```
 
 推荐：
@@ -352,14 +357,14 @@ math_detail
 }
 ```
 
-### 为什么保留 process？
+### 为什么保留 process（解题过程信息）？
 
 赛题要求不仅判断最终答案，还要支持过程分。
 
 因此不能只有：
 
 ```text
-correct = false
+correct（最终答案是否正确） = false
 ```
 
 还需要知道：
@@ -377,10 +382,14 @@ correct = false
 英语作文采用 Rubric 多维评分。
 
 ```text
-english_essay_detail
-├── dimension_scores
-├── language_errors
-└── evidence
+english_essay_detail（英语作文详情）
+├── dimension_scores（多维评分）
+│   ├── content（内容）
+│   ├── organization（组织结构）
+│   ├── grammar（语法）
+│   └── vocabulary（词汇）
+├── language_errors（语言错误列表）
+└── evidence（评分证据）
 ```
 
 推荐：
@@ -422,7 +431,26 @@ english_essay_detail
 }
 ```
 
-英语作文的知识点也进入公共 `diagnosis.knowledge_points`，例如：
+其中主要字段含义：
+
+```text
+dimension_scores（多维评分）
+content（内容维度）
+organization（组织结构维度）
+grammar（语法维度）
+vocabulary（词汇维度）
+score（该维度得分）
+max_score（该维度满分）
+
+language_errors（语言错误列表）
+type（错误类型）
+original（原句）
+suggestion（修改建议）
+
+evidence（评分证据）
+```
+
+英语作文的知识点也进入公共 `diagnosis.knowledge_points（知识点列表）`，例如：
 
 ```json
 [
@@ -445,9 +473,15 @@ english_essay_detail
 
 ---
 
-## 10. Execution Meta：记录模型路由结果
+## 10. Execution Meta（执行元数据）：记录模型路由结果
 
 业务结果只有一个 `GradingResult`，但为了后续评测模型路由的成本、延迟和效果，可以保留少量执行元数据。
+
+```text
+execution_meta（执行元数据）
+├── route（模型路由结果）
+└── models_used[]（实际使用的模型列表）
+```
 
 ```json
 {
@@ -479,6 +513,8 @@ english_essay_detail
 ---
 
 # 11. 数学完整示例
+
+> 以下 JSON 保持真实英文 Key，中文含义以本文前面的字段结构和字段表为准。
 
 ```json
 {
@@ -557,6 +593,8 @@ english_essay_detail
 ---
 
 # 12. 英语作文完整示例
+
+> 以下 JSON 保持真实英文 Key，中文含义以本文前面的字段结构和字段表为准。
 
 ```json
 {
@@ -666,28 +704,28 @@ english_essay_detail
 优先沉淀和聚合：
 
 ```text
-score.rate
+score.rate（得分率）
 
-diagnosis.knowledge_points[].key
-diagnosis.knowledge_points[].performance
+diagnosis.knowledge_points[].key（知识点标识）
+diagnosis.knowledge_points[].performance（当前知识点表现）
 
-diagnosis.errors[].code
+diagnosis.errors[].code（错误编码）
 
-subject
-question_type
-difficulty
+subject（学科）
+question_type（题型）
+difficulty（难度）
 ```
 
 主要用于展示或追溯，不直接作为长期画像核心统计值：
 
 ```text
-feedback.summary
-feedback.strengths
-feedback.improvements
+feedback.summary（总体评价）
+feedback.strengths（做得好的地方）
+feedback.improvements（需要改进的地方）
 
-diagnosis.*.evidence
-math_detail.process.analysis
-english_essay_detail.evidence
+diagnosis.*.evidence（诊断证据）
+math_detail.process.analysis（数学过程分析）
+english_essay_detail.evidence（英语作文评分证据）
 ```
 
 也就是说：
