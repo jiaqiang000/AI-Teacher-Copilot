@@ -2,7 +2,7 @@
 
 ## 1. Tool 与 Skill 的职责边界
 
-Teacher Agent 完整能力规划包含 7 个 Tool 和 5 个 Skill。7 个 Tool 负责原子业务能力，5 个 Skill 用于完成稳定、可复用的复杂教学任务。
+Teacher Agent 完整能力规划包含 9 个 Tool 和 5 个 Skill。9 个 Tool 负责原子业务能力，5 个 Skill 用于完成稳定、可复用的复杂教学任务。
 
 ```text
 Teacher Agent
@@ -18,6 +18,8 @@ Teacher Agent
     ├── get_student_profile
     ├── get_student_grading_history
     ├── get_class_profile
+    ├── list_class_students
+    ├── list_class_homeworks
     ├── get_homework_analysis
     ├── get_question_analysis
     ├── search_teaching_materials
@@ -28,10 +30,10 @@ Teacher Agent
 
 ```text
 完整规划
-7 Tools + 5 Skills
+9 Tools + 5 Skills
 
 当前阶段实现
-6 Tools + 4 Skills
+8 Tools + 4 Skills
 
 暂缓实现
 ├── search_teaching_materials
@@ -64,6 +66,12 @@ Skill
 
 “第 8 题错误率多少？”
 → get_question_analysis
+
+“八三班现在有哪些学生？”
+→ list_class_students
+
+“八三班这周有哪些数学作业？”
+→ list_class_homeworks
 ```
 
 复杂教学任务通过 Skill 组织多个 Tool：
@@ -326,7 +334,8 @@ personalized-intervention
 
 ```text
 get_class_profile（查询班级画像：获取班级整体掌握情况和学生分布）
-get_student_profile（查询学生画像：必要时下钻单个学生的掌握情况）
+list_class_students（查询班级学生列表：枚举需要参与分层的完整学生集合）
+get_student_profile（查询学生画像：读取具体学生的掌握情况）
 search_question_bank（检索题库：按知识点、难度和题型匹配分层练习）
 ```
 
@@ -337,7 +346,12 @@ get_class_profile
         ↓
 识别班级整体分布
         ↓
-必要时 get_student_profile
+list_class_students
+        ↓
+获得完整班级学生集合
+        ↓
+按需 get_student_profile
+读取参与分层学生的具体掌握情况
         ↓
 划分学生层次
         ↓
@@ -378,6 +392,8 @@ search_question_bank
 分层依据
 ```
 
+`list_class_students` 只补齐“有哪些学生需要参与分层”的数据准备，不改变该 Skill 的核心教学判断逻辑。
+
 ---
 
 ### 2.6 Skill 边界
@@ -389,6 +405,8 @@ weak-point-analysis
 error-analysis
 question-analysis
 profile-query
+class-student-listing
+class-homework-listing
 teaching-material-search
 question-search
 report-generation
@@ -397,7 +415,7 @@ summary-generation
 
 原因：
 
-- 数据查询、题目分析、资源搜索属于 Tool。
+- 数据查询、对象枚举、题目分析、资源搜索属于 Tool。
 - 薄弱点分析和错误分析属于现有 Skill 的内部步骤。
 - 报告和总结属于 Skill 的输出阶段，不构成独立教学任务流程。
 
@@ -446,12 +464,14 @@ Tool 名称统一遵循：
 - 名称能够直接体现业务作用。
 - 一个 Tool 对应一个清晰业务对象或原子能力。
 
-完整规划中的 7 个名称保持不变：
+完整规划中的 9 个名称固定为：
 
 ```text
 get_student_profile
 get_student_grading_history
 get_class_profile
+list_class_students
+list_class_homeworks
 get_homework_analysis
 get_question_analysis
 search_teaching_materials
@@ -483,6 +503,18 @@ Tool Description 不只说明“这个 Tool 是什么”，还需要说明：
 
 如果需要查询某一道题、某次作业或具体历史错误记录，
 应使用 get_student_grading_history，而不是本工具。
+```
+
+两个列表 Tool 的 Description 必须显式区分“发现对象”和“分析对象”：
+
+```text
+list_class_students
+= 查询这个班级有哪些学生
+≠ 分析这些学生学得怎么样
+
+list_class_homeworks
+= 查询这个时间范围有哪些作业
+≠ 分析某次作业表现如何
 ```
 
 Description 是 Tool Selection（工具选择）的核心依据之一，需要明确各 Tool 之间的边界。
@@ -536,6 +568,20 @@ class GetStudentProfileInput(BaseModel):
 }
 ```
 
+新增列表 Tool 的输入保持简单：
+
+```text
+list_class_students
+└── class_id（班级ID） 必填
+
+list_class_homeworks
+├── class_id（班级ID） 必填
+├── subject（学科） 可选
+├── start_time（开始时间） 可选
+├── end_time（结束时间） 可选
+└── limit（返回数量） 可选
+```
+
 Input Schema 负责约束：
 
 - 必填参数。
@@ -562,22 +608,16 @@ GetStudentProfileOutput
 └── difficulty_performance（不同难度表现）
 ```
 
-该结构直接复用 03 中已经定义的：
+该结构直接复用 03 中已经定义的 Student Profile（学生画像）。
+
+列表 Tool 返回业务事实摘要：
 
 ```text
-Student Profile（学生画像）
-```
+list_class_students
+→ ClassStudent[]
 
-对应关系：
-
-```text
-03
-定义 Student Profile Schema
-        ↓
-05
-get_student_profile
-        ↓
-Student Profile 作为返回结构
+list_class_homeworks
+→ HomeworkSummary[]
 ```
 
 其他 Tool 同样直接复用 03–05 联合设计中已经确定的数据结构，避免重复定义。
@@ -644,19 +684,33 @@ StudentProfileService
         ↓
 ├── RedisProfileRepository
 └── MySQLGradingRepository
+
+list_class_students Tool
+        ↓
+ClassQueryService
+        ↓
+MySQL class_student / student
+
+list_class_homeworks Tool
+        ↓
+ClassQueryService
+        ↓
+MySQL homework
 ```
 
 ---
 
 ## 9. data_source（数据源）
 
-完整规划中 7 个 Tool 的数据来源如下：
+完整规划中 9 个 Tool 的数据来源如下：
 
 | Tool | 数据来源 |
 |---|---|
 | `get_student_profile` | Redis → Miss 后基于 MySQL 重算 |
 | `get_student_grading_history` | MySQL |
 | `get_class_profile` | Redis → Miss 后基于 MySQL 重算 |
+| `list_class_students` | MySQL `class_student + student` |
+| `list_class_homeworks` | MySQL `homework` |
 | `get_homework_analysis` | MySQL 即时聚合 |
 | `get_question_analysis` | MySQL 即时聚合 |
 | `search_teaching_materials` | 后续：RAG / 教材知识库（本阶段暂缓） |
@@ -759,9 +813,18 @@ DATA_SOURCE_ERROR（数据源异常）
 参数错误
 数据不存在
 无权限
-Redis Miss
+Redis Miss（仅画像 Tool）
 MySQL 异常
 返回 Schema 校验
+```
+
+列表 Tool 额外验证：
+
+```text
+空班级成员列表
+时间范围内无作业
+时间范围过滤正确性
+班级权限隔离
 ```
 
 除 Tool 单元测试外，还需要进行 Agent 层 Tool Selection 评测。
@@ -775,6 +838,15 @@ get_homework_analysis
 
 不期望：
 get_class_profile
+
+用户问题：
+“三班这周有哪些数学作业？”
+
+期望 Tool：
+list_class_homeworks
+
+不期望：
+get_homework_analysis
 ```
 
 核心评测指标：
@@ -797,7 +869,7 @@ Task Completion Rate（任务完成率）
 
 ---
 
-## 13. 7 个 Tool 的完整职责
+## 13. 9 个 Tool 的完整职责
 
 ### 13.1 `get_student_profile`
 
@@ -871,7 +943,51 @@ Redis → Miss 后基于 MySQL 重算
 
 ---
 
-### 13.4 `get_homework_analysis`
+### 13.4 `list_class_students`
+
+作用：查询一个班级的完整学生成员列表，用于后续批量学生任务。
+
+```text
+输入
+class_id（班级ID）          必填
+
+输出
+ClassStudent[]
+├── student_id
+└── name
+
+数据来源
+MySQL class_student + student
+```
+
+---
+
+### 13.5 `list_class_homeworks`
+
+作用：按班级、学科和时间范围查询作业列表，用于发现后续需要分析的 homework_id。
+
+```text
+输入
+class_id（班级ID）          必填
+subject（学科）             可选
+start_time（开始时间）      可选
+end_time（结束时间）        可选
+limit（返回数量）           可选
+
+输出
+HomeworkSummary[]
+├── homework_id
+├── name
+├── subject
+└── published_at
+
+数据来源
+MySQL homework
+```
+
+---
+
+### 13.6 `get_homework_analysis`
 
 作用：分析某个班级的一次具体作业。
 
@@ -900,7 +1016,7 @@ attention_students（重点关注学生）
 
 ---
 
-### 13.5 `get_question_analysis`
+### 13.7 `get_question_analysis`
 
 作用：下钻分析某个班级在某次作业中的一道具体题。
 
@@ -930,7 +1046,7 @@ representative_errors（典型错误证据）
 
 ---
 
-### 13.6 `search_teaching_materials`【本阶段暂缓】
+### 13.8 `search_teaching_materials`【本阶段暂缓】
 
 > 本阶段暂不实现。当前阶段不建设 RAG / Teaching Knowledge Base，仅保留该 Tool 的完整 Contract，待后续知识检索能力建设时启用。
 
@@ -962,7 +1078,7 @@ TeachingMaterial
 
 ---
 
-### 13.7 `search_question_bank`
+### 13.9 `search_question_bank`
 
 作用：根据知识点、难度和题型检索练习题。
 
@@ -1000,7 +1116,7 @@ Question
 
 ### 14.1 Tool 注册
 
-当前阶段只注册实际实现的 6 个 Tool。`search_teaching_materials` 的注册配置留到后续 RAG / Teaching Knowledge Base 实现时再加入。
+当前阶段只注册实际实现的 8 个 Tool。`search_teaching_materials` 的注册配置留到后续 RAG / Teaching Knowledge Base 实现时再加入。
 
 ```text
 teacher:data
@@ -1026,6 +1142,14 @@ tools:
   - name: get_class_profile
     group: teacher:data
     use: teacher_copilot.tools.profile:get_class_profile
+
+  - name: list_class_students
+    group: teacher:data
+    use: teacher_copilot.tools.class_query:list_class_students
+
+  - name: list_class_homeworks
+    group: teacher:data
+    use: teacher_copilot.tools.class_query:list_class_homeworks
 
   - name: get_homework_analysis
     group: teacher:data
@@ -1102,17 +1226,20 @@ teacher_copilot/
 │   ├── schemas/
 │   │   ├── student.py
 │   │   ├── class_profile.py
+│   │   ├── class_query.py
 │   │   ├── homework.py
 │   │   ├── question.py
 │   │   └── resource.py
 │   │
 │   ├── profile.py
+│   ├── class_query.py
 │   ├── analysis.py
 │   └── resource.py
 │
 ├── services/
 │   ├── student_profile_service.py
 │   ├── class_profile_service.py
+│   ├── class_query_service.py
 │   ├── homework_analysis_service.py
 │   ├── question_analysis_service.py
 │   └── question_bank_service.py
@@ -1167,28 +1294,38 @@ Skill
 完整能力规划：
 
 ```text
-7 个 Tools
+9 个 Tools
   ↓
 5 个 Skills
   ↓
 Teacher Agent
   ↓
-Multi-Agent
+按业务复杂度决定是否 Multi-Agent
 ```
 
 当前阶段实现：
 
 ```text
-6 个 Tools
+8 个 Tools
   ↓
 4 个 Skills
   ↓
-Teacher Agent
+Teacher Lead Agent
 ```
 
 其中 `search_teaching_materials` 与 `personalized-intervention` 留待后续 RAG / Teaching Knowledge Base 阶段实现。
 
-Tool 负责原子业务能力；Skill 负责稳定教学任务 SOP；后续 Multi-Agent 负责在更复杂任务中划分不同 Agent 的职责和协作关系。
+两个列表 Tool 的定位：
+
+```text
+list_class_students
+list_class_homeworks
+= 业务对象发现能力
+= 可以被 Lead Agent / Sub-Agent 作为复杂任务的数据准备步骤
+= 不需要单独包装成 Skill
+```
+
+Tool 负责原子业务能力；Skill 负责稳定教学任务 SOP；Multi-Agent 只在更大规模、可并行或需要上下文隔离 / 独立审核的真实业务中启用。
 
 Skill 重点定义：
 
@@ -1208,7 +1345,7 @@ Tool 调用顺序
 Tool = 能力
 Skill = 使用能力的方法
 Agent = 根据用户目标选择并执行能力
-Multi-Agent = 多个专业 Agent 的任务协作
+Multi-Agent = 真实业务有并行 / 隔离 / 独立审核收益时的按需协作
 ```
 
 ---
