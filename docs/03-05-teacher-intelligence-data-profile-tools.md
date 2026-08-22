@@ -444,9 +444,21 @@ LLM
 
 ## 5. Teacher Agent Tools（教师 Agent 工具）
 
-Teacher Agent 完整能力规划包含 7 个核心 Tool（工具）。Tool 按业务对象和能力边界划分，不按单个统计字段拆分。
+Teacher Agent 完整能力规划包含 9 个核心 Tool（工具）。Tool 按业务对象和能力边界划分，不按单个统计字段拆分。
 
-当前阶段暂不建设 RAG / Teaching Knowledge Base，因此 `search_teaching_materials` 仅保留 Tool Contract，不进入当前实现范围。当前阶段实际实现其余 6 个 Tool。
+当前阶段暂不建设 RAG / Teaching Knowledge Base，因此 `search_teaching_materials` 仅保留 Tool Contract，不进入当前实现范围。当前阶段实际实现其余 8 个 Tool。
+
+其中新增的两个业务对象发现 Tool：
+
+```text
+list_class_students（查询班级学生列表）
+= 枚举一个班级的真实成员
+
+list_class_homeworks（查询班级作业列表）
+= 按班级 / 学科 / 时间范围发现作业
+```
+
+它们只负责发现业务对象，不负责画像计算或学情分析。
 
 ---
 
@@ -583,9 +595,101 @@ Redis
 MySQL 重算
 ```
 
+边界：`get_class_profile` 回答班级长期学情，不用于枚举完整学生名单；需要班级成员列表时使用 `list_class_students`。
+
 ---
 
-### 5.4 `get_homework_analysis`
+### 5.4 `list_class_students`
+
+**作用**
+
+查询指定班级的真实学生成员列表，为全班批量诊断、批量个性化练习等任务提供需要处理的 `student_id` 集合。
+
+**输入参数**
+
+```text
+class_id（班级ID）          必填
+```
+
+**输出**
+
+```text
+ClassStudent[]（班级学生列表）
+├── student_id（学生ID）
+└── name（学生姓名）
+```
+
+**数据来源**
+
+```text
+MySQL
+class_student
++
+student
+```
+
+边界：
+
+```text
+list_class_students
+= 谁在这个班级里
+
+get_class_profile
+= 这个班级长期学得怎么样
+```
+
+该 Tool 不计算 Student Profile，也不返回学生成绩或掌握度。
+
+---
+
+### 5.5 `list_class_homeworks`
+
+**作用**
+
+查询指定班级在某个学科、某个时间范围内的作业列表，为“本周 / 近期班级复盘”等跨多次作业业务发现需要进一步分析的 `homework_id`。
+
+**输入参数**
+
+```text
+class_id（班级ID）          必填
+subject（学科）             可选
+start_time（开始时间）      可选
+end_time（结束时间）        可选
+limit（返回数量）           可选
+```
+
+**输出**
+
+```text
+HomeworkSummary[]（作业摘要列表）
+├── homework_id（作业ID）
+├── name（作业名称）
+├── subject（学科）
+└── published_at（发布时间）
+```
+
+**数据来源**
+
+```text
+MySQL
+homework
+```
+
+边界：
+
+```text
+list_class_homeworks
+= 这个时间范围有哪些作业
+
+get_homework_analysis
+= 某一份已知作业具体表现如何
+```
+
+该 Tool 只做作业发现，不计算完成率、成绩分布或知识点表现。
+
+---
+
+### 5.6 `get_homework_analysis`
 
 **作用**
 
@@ -625,7 +729,7 @@ MySQL
 
 ---
 
-### 5.5 `get_question_analysis`
+### 5.7 `get_question_analysis`
 
 **作用**
 
@@ -666,7 +770,7 @@ MySQL
 
 ---
 
-### 5.6 `search_teaching_materials`【本阶段暂缓】
+### 5.8 `search_teaching_materials`【本阶段暂缓】
 
 > 本阶段暂不实现该 Tool。当前阶段不建设 RAG / Teaching Knowledge Base（教学知识库），因此仅保留接口与职责设计，待后续引入教学资料检索能力后再启用。
 
@@ -704,7 +808,7 @@ TeachingMaterial[]（教学材料列表）
 
 ---
 
-### 5.7 `search_question_bank`
+### 5.9 `search_question_bank`
 
 **作用**
 
@@ -772,13 +876,13 @@ MySQL Question Database（题库）
 ├── get_student_profile
 ├── get_student_grading_history
 ├── get_class_profile
+├── list_class_students
+├── list_class_homeworks
 ├── get_homework_analysis
 ├── get_question_analysis
 ├── search_teaching_materials（后续 / 本阶段暂缓）
 └── search_question_bank
           │
           ↓
-06 Agent Memory
-          ↓
-07 Multi-Agent
+06–07 业务驱动的 Teacher Lead Agent + 按需 Multi-Agent
 ```
