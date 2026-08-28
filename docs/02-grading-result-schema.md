@@ -2,14 +2,14 @@
 
 ## 1. 设计目标
 
-`GradingResult` 是一次 `Submission` 经过完整 Grading Workflow 后，对业务层输出的**唯一最终批改结果**。
+`GradingResult` 是当前有效 `Submission` 经过完整 Grading Workflow 后，对业务层输出的**唯一最终批改结果**。
 
 ```text
-Submission
+Submission（当前版本）
     ↓
 完整 Grading Workflow
     ↓
-GradingResult
+GradingResult（当前有效结果）
 ```
 
 它需要同时满足三类需求：
@@ -26,17 +26,31 @@ GradingResult
 
 ## 2. 核心原则
 
-### 2.1 一个 Submission 对应一个最终 GradingResult
+### 2.1 一个当前有效 Submission 对应一个当前有效 GradingResult
 
 ```text
-Submission A
+Submission version N
     ↓
 完整 Workflow
     ↓
-GradingResult A
+GradingResult
 ```
 
 Workflow 内部即使发生多个模型调用、Evidence Extraction、Scoring、模型路由或工具调用，对业务层仍然只输出一个最终结果。
+
+如果学生重新提交，`Submission.version` 增加并覆盖旧提交内容。旧版本对应的异步 `GradingTask` 即使晚于新任务完成，也不得覆盖当前结果。
+
+写入当前 `GradingResult` 前必须满足：
+
+```text
+GradingTask.submission_version
+==
+Submission.version
+```
+
+不满足时，该任务已经过期，其结果直接失效。
+
+`GradingTask` 属于工程执行层，不嵌入 `GradingResult` Schema。
 
 ### 2.2 数学和英语共用一个顶层结构
 
@@ -71,21 +85,25 @@ Question + Student Answer
 
 为了支持后续统计，不能长期依赖完全自由的自然语言名称。当前 Schema 同时保留 `name（知识点名称）` 和可标准化的 `key（知识点标识）`；知识点标准化、同义词归一和知识体系映射在后续数据沉淀阶段处理。
 
-### 2.4 difficulty（难度）由小模型自动识别
+### 2.4 difficulty（难度）仅用于数学模型路由
 
 教师不需要填写题目难度。
+
+数学题：
 
 ```text
 Question
    ↓
-Qwen 小模型
+Qwen3.5-4B
    ↓
-difficulty（难度） / complexity（复杂度）
+difficulty = easy / medium / hard
    ↓
 模型路由
 ```
 
-最终识别结果进入 `GradingResult`，既可以用于工程统计，也可以用于后续分析模型路由效果。
+识别结果进入 `GradingResult`，既可以用于工程统计，也可以用于后续分析模型路由效果。
+
+英语作文当前固定使用 `DeepSeek v4 Flash` 两阶段批改，不进行 difficulty classification，因此英语作文的 `difficulty` 允许为 `null`。
 
 ### 2.5 GradingResult 只保存“当前这次批改”的反馈
 
@@ -115,7 +133,7 @@ GradingResult
 │
 ├── subject（学科）
 ├── question_type（题型）
-├── difficulty（难度）
+├── difficulty（难度；英语可为 null）
 │
 ├── score（得分信息）
 │   ├── earned（实际得分）
@@ -162,10 +180,10 @@ GradingResult
 | 字段 | 含义 |
 |---|---|
 | `grading_result_id（批改结果ID）` | 最终批改结果 ID |
-| `submission_id（学生提交ID）` | 对应哪一次学生提交 |
+| `submission_id（学生提交ID）` | 对应当前哪个学生提交 |
 | `subject（学科）` | `math` / `english` |
 | `question_type（题型）` | 如 `calculation` / `solution` / `essay` |
-| `difficulty（难度）` | 小模型识别出的题目难度，如 `easy` / `medium` / `hard` |
+| `difficulty（难度）` | 数学题由 `Qwen3.5-4B` 识别为 `easy` / `medium` / `hard`；英语作文当前为 `null` |
 
 `student_id（学生ID）`、`question_id（题目ID）`、`homework_id（作业ID）` 不需要在逻辑 Schema 中重复保存，通过 `submission_id（学生提交ID）` 可以关联获得。是否在数据库层做冗余字段优化，留到数据库设计阶段决定。
 
@@ -483,30 +501,49 @@ execution_meta（执行元数据）
 └── models_used[]（实际使用的模型列表）
 ```
 
+数学 easy / medium：
+
 ```json
 {
   "execution_meta": {
     "route": "small_model",
     "models_used": [
-      "qwen2.5-4b"
+      "Qwen3.5-4B"
     ]
   }
 }
 ```
 
-复杂题可能是：
+数学 hard：
 
 ```json
 {
   "execution_meta": {
     "route": "strong_model",
     "models_used": [
-      "qwen2.5-4b",
-      "deepseek-v3"
+      "Qwen3.5-4B",
+      "DeepSeek v4 Flash"
     ]
   }
 }
 ```
+
+这里 `Qwen3.5-4B` 用于 difficulty classification，`DeepSeek v4 Flash` 用于困难题正式批改。
+
+英语作文：
+
+```json
+{
+  "execution_meta": {
+    "route": "english_two_stage",
+    "models_used": [
+      "DeepSeek v4 Flash"
+    ]
+  }
+}
+```
+
+英语两阶段虽然会调用 `DeepSeek v4 Flash` 两次，但 `models_used[]` 表示使用过的模型集合，不重复记录同一模型。
 
 这里记录内部执行事实，但不会产生多个业务层 GradingResult。
 
@@ -582,7 +619,7 @@ execution_meta（执行元数据）
   "execution_meta": {
     "route": "small_model",
     "models_used": [
-      "qwen2.5-4b"
+      "Qwen3.5-4B"
     ]
   },
 
@@ -602,7 +639,7 @@ execution_meta（执行元数据）
   "submission_id": "sub_20001",
   "subject": "english",
   "question_type": "essay",
-  "difficulty": "medium",
+  "difficulty": null,
 
   "score": {
     "earned": 16,
@@ -684,10 +721,9 @@ execution_meta（执行元数据）
   },
 
   "execution_meta": {
-    "route": "strong_model",
+    "route": "english_two_stage",
     "models_used": [
-      "qwen2.5-4b",
-      "deepseek-v3"
+      "DeepSeek v4 Flash"
     ]
   },
 
@@ -713,7 +749,7 @@ diagnosis.errors[].code（错误编码）
 
 subject（学科）
 question_type（题型）
-difficulty（难度）
+difficulty（数学难度；英语当前为空）
 ```
 
 主要用于展示或追溯，不直接作为长期画像核心统计值：
