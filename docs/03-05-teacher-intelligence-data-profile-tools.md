@@ -59,11 +59,31 @@ class_student
 homework
 question
 submission
+ocr_result
 
 grading_result
 grading_result_knowledge_point
 grading_result_error
 ```
+
+其中 `ocr_result` 保存一次当前 Submission 版本对应的 OCR 核心识别证据：
+
+```text
+Submission
+    ↓
+OCRResult
+    ↓
+GradingResult
+```
+
+当前 MVP 只要求持久化 OCR 的核心结果：
+
+```text
+md_results
+layout_details
+```
+
+`layout_details` 直接以 JSON 保存，不拆分独立 `ocr_block` 表。数学 Workflow 会使用其中的 `index / label / content / bbox2d / width / height` 进行 Block 拼装和原图错误定位；完整 OCR Contract 与数学步骤评分流程统一见 `docs/01-business-domain-and-grading-workflow.md`，本文件不重复定义。
 
 新增标准化字典：
 
@@ -297,10 +317,10 @@ Question Analysis（题目分析）
 ```text
 MySQL
 ├── 所有业务事实
-├── GradingResult
+├── Submission / OCRResult / GradingResult
 ├── Knowledge Point 事实
 ├── Error 事实
-└── Homework / Question / Submission 等
+└── Homework / Question 等
 
 Redis
 ├── Student Profile（学生画像）
@@ -310,6 +330,21 @@ Redis
 ├── Homework Analysis（作业分析）
 └── Question Analysis（题目分析）
 ```
+
+其中：
+
+```text
+Submission
+= 学生当前提交了什么原图
+
+OCRResult
+= OCR 从当前提交版本中识别到了什么
+
+GradingResult
+= 模型基于题目和 OCR 证据如何批改
+```
+
+`OCRResult` 属于可追溯的批改证据数据，不进入 Student / Class Profile 聚合核心指标；Profile 仍以 `GradingResult` 的稳定结构化事实作为主要输入。
 
 Student Profile（学生画像）与 Class Profile（班级画像）的生成方式：
 
@@ -852,6 +887,7 @@ MySQL Question Database（题库）
 03 数据基础与学习画像模型
 │
 ├── MySQL 事实模型
+├── OCRResult 批改证据
 ├── Knowledge Point / Error 标准化
 ├── Student Profile（学生画像）
 ├── Class Profile（班级画像）
