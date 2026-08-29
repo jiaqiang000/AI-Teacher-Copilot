@@ -5,7 +5,7 @@
 ### 3.1 整体数据架构
 
 ```text
-                    MySQL 业务事实层
+                        MySQL 数据层
                            │
           ┌────────────────┼────────────────┐
           ↓                ↓                ↓
@@ -29,7 +29,8 @@ Student Profile      Class Profile      即时分析
 
 ```text
 MySQL
-= 唯一业务事实源
+= 业务事实的唯一事实源
++ Knowledge Point / Error Type 标准参考字典
 
 Redis
 = Student Profile（学生画像）
@@ -46,7 +47,7 @@ LLM
 
 ---
 
-### 3.2 MySQL 事实模型
+### 3.2 MySQL 数据模型：业务事实 + 标准参考字典
 
 保留业务事实表：
 
@@ -116,33 +117,269 @@ layout_details
 
 `layout_details` 直接以 JSON 保存，不拆分独立 `ocr_block` 表。数学 Workflow 会使用其中的 `index / label / content / bbox2d / width / height` 进行 Block 拼装和原图错误定位；完整 OCR Contract 与数学步骤评分流程统一见 `docs/01-business-domain-and-grading-workflow.md`，本文件不重复定义。
 
-新增标准化字典：
+除业务事实外，MySQL 维护两张标准参考字典：
 
 ```text
 knowledge_point
 error_type
 ```
 
-知识点和错误类型进入统计体系前必须完成标准化：
+这两张表不是“某个学生发生了什么”的业务事实，而是整个系统用于生成、校验、统计和检索的稳定 Taxonomy（标准分类体系）。
+
+#### 3.2.1 Taxonomy 总体规则
+
+Knowledge Point（知识点）与 Error Type（错误类型）统一采用两级结构：
 
 ```text
-模型原始输出
+subject（学科）
     ↓
-知识点 / 错误类型标准化
+level = 1  大类
     ↓
-knowledge_point_key
-error_code
-    ↓
+level = 2  小类
+    └── OTHER 兜底小类
+```
+
+`subject` 只是学科范围，不计算为分类层级。当前 MVP 不建设无限层级知识图谱，也不引入独立 Normalizer Agent、Mapping Agent、Embedding Mapping 或第二次 LLM 分类。
+
+真正进入 `GradingResult`、Profile、Analysis 和 Tool 查询条件的，只允许是 `level = 2` 的标准 `knowledge_point_key / error_code`。
+
+标准化发生在 Grading Workflow 内：
+
+```text
+Question.subject
+        ↓
+读取当前学科 Knowledge Point / Error Type Taxonomy
+        ↓
+将允许的标准 level=2 候选注入 Grading Prompt / Structured Output
+        ↓
+Grading Model
+├── 选择 knowledge_point_key / error_code
+└── 生成 raw_name / raw_type
+        ↓
+TaxonomyValidator
+├── key / code 是否存在
+├── subject 是否一致
+└── 是否 level = 2
+        ↓
+GradingResultAssembler
+        ↓
 MySQL
 ```
 
-统计和画像计算不长期依赖自由文本知识点名称或错误名称，而以标准化的 `knowledge_point_key（知识点标识）` 和 `error_code（错误类型编码）` 为主要统计依据。
+这里不是“模型先自由生成名称，再由另一个 LLM 做语义映射”。模型在批改时直接从系统提供的标准候选中选择稳定 `key / code`，同时保留本次实际识别出的自然语言语义。
+
+#### 3.2.2 Knowledge Point（知识点）标准字典
+
+逻辑结构：
+
+```text
+knowledge_point
+├── key
+├── name
+├── subject
+├── parent_key
+├── level
+└── is_other
+```
+
+字段职责：
+
+```text
+key
+= 稳定知识点标识
+
+name
+= 标准展示名称
+
+subject
+= math / english
+
+parent_key
+= level=2 指向所属 level=1 大类；level=1 为 null
+
+level
+= 1 / 2
+
+is_other
+= 是否为该大类的 OTHER 兜底项
+```
+
+例如数学：
+
+```text
+math.linear_equation（一元一次方程）          level=1
+├── math.linear_equation.transposition（移项） level=2
+├── math.linear_equation.combine_like_terms（合并同类项） level=2
+└── math.linear_equation.other（其他）          level=2 / is_other=true
+```
+
+例如英语：
+
+```text
+english.grammar（语法）                       level=1
+├── english.grammar.past_tense（一般过去时）   level=2
+├── english.grammar.subject_verb_agreement（主谓一致） level=2
+└── english.grammar.other（其他语法知识点）    level=2 / is_other=true
+```
+
+每个 level=1 大类至少保留一个 level=2 `OTHER`，用于覆盖当前标准字典尚未细分的具体知识点。第一版不继续向下建设第三层。
+
+#### 3.2.3 Error Type（错误类型）标准字典
+
+逻辑结构：
+
+```text
+error_type
+├── code
+├── name
+├── subject
+├── parent_code
+├── level
+└── is_other
+```
+
+例如数学：
+
+```text
+CALCULATION_ERROR（计算错误）          level=1
+├── SIGN_ERROR（符号错误）             level=2
+├── ARITHMETIC_ERROR（算术错误）       level=2
+└── CALCULATION_OTHER（其他计算错误）  level=2 / is_other=true
+
+REASONING_ERROR（推理错误）            level=1
+├── INVALID_TRANSFORMATION（错误变形） level=2
+├── MISSING_STEP（关键步骤缺失）       level=2
+└── REASONING_OTHER（其他推理错误）    level=2 / is_other=true
+```
+
+例如英语：
+
+```text
+GRAMMAR_ERROR（语法错误）              level=1
+├── TENSE_ERROR（时态错误）            level=2
+├── SUBJECT_VERB_ERROR（主谓一致错误） level=2
+├── ARTICLE_ERROR（冠词错误）          level=2
+└── GRAMMAR_OTHER（其他语法错误）      level=2 / is_other=true
+```
+
+同样，每个大类保留一个 `OTHER` 兜底项；未被当前字典精确覆盖的错误不能自行创造新的 `error_code`。
+
+#### 3.2.4 GradingResult 诊断事实表
+
+`grading_result_knowledge_point` 保存某次当前有效批改中实际识别出的知识点事实：
+
+```text
+grading_result_knowledge_point
+├── grading_result_id
+├── knowledge_point_key
+├── raw_name
+├── performance
+└── evidence
+```
+
+其中：
+
+```text
+knowledge_point_key
+= 标准 level=2 key，用于聚合、检索和关联字典
+
+raw_name
+= 模型对本次实际知识点语义的自然语言概括
+= 每条知识点事实都保存，不只在 OTHER 时保存
+```
+
+标准 `name` 不在事实表重复保存，需要展示时根据 `knowledge_point_key` 从 `knowledge_point` 字典读取。
+
+`grading_result_error` 保存某次当前有效批改中实际识别出的错误事实：
+
+```text
+grading_result_error
+├── grading_result_id
+├── error_code
+├── raw_type
+├── knowledge_point_key
+├── description
+└── evidence
+```
+
+其中：
+
+```text
+error_code
+= 标准 level=2 code，用于聚合、检索和关联字典
+
+raw_type
+= 模型对本次实际错误语义的简短自然语言概括
+= 每条错误事实都保存，不只在 OTHER 时保存
+
+description
+= 对本次错误原因的展开说明
+
+evidence
+= 学生当前作答中的直接证据
+```
+
+标准 `type / name` 不在事实表重复保存，需要展示时根据 `error_code` 从 `error_type` 字典读取。
+
+`raw_name / raw_type` 的职责是保留标准化没有表达完的具体语义，方便教师查看、事实下钻、工程排查和未来扩充 Taxonomy；它们不是长期统计主键。
+
+#### 3.2.5 TaxonomyValidator
+
+`TaxonomyValidator` 是普通后端确定性校验代码：
+
+```text
+TaxonomyValidator
+≠ Agent
+≠ Tool
+≠ LLM
+```
+
+只负责检查：
+
+```text
+knowledge_point_key / error_code 是否存在
+subject 是否与当前 Question.subject 一致
+是否为 level = 2 可落库小类
+```
+
+非法 `key / code` 不允许原样写入 `grading_result_knowledge_point / grading_result_error`，应视为 Grading Output Contract 校验失败。具体模型重试策略属于 Workflow 工程实现，不在本数据模型中继续扩展。
+
+#### 3.2.6 聚合与查询统一规则
+
+后续 Student Profile、Class Profile、Homework Analysis、Question Analysis 和 Teacher Agent Tool 的统计维度统一使用：
+
+```text
+knowledge_point_key
+error_code
+```
+
+需要按大类查看时，通过：
+
+```text
+knowledge_point.parent_key
+error_type.parent_code
+```
+
+向上聚合。
+
+以下字段不作为主要 `GROUP BY` / 画像聚合键：
+
+```text
+raw_name
+raw_type
+description
+evidence
+```
+
+它们用于保留和展示具体业务语义。
 
 ---
 
 ### 3.3 Student Profile（学生画像）
 
 定位：描述一个学生在某个学科上的长期学习状态。
+
+本节及后续 Profile / Analysis 中出现的 `knowledge_point_key / common_error_codes / error_code`，均指标准 Taxonomy 中可落库的 `level = 2` 编码；需要大类统计时通过标准字典父级关系向上聚合。
 
 ```text
 StudentProfile（学生画像）
@@ -349,11 +586,15 @@ Question Analysis（题目分析）
 
 ```text
 MySQL
-├── 所有业务事实
-├── Submission / OCRResult / GradingResult
-├── Knowledge Point 事实
-├── Error 事实
-└── Homework / Question 等
+├── 业务事实
+│   ├── Teacher / Student / Class / Homework / Question
+│   ├── Submission / OCRResult / GradingResult
+│   ├── GradingResult Knowledge Point 事实
+│   └── GradingResult Error 事实
+│
+└── 标准参考字典
+    ├── Knowledge Point Taxonomy
+    └── Error Type Taxonomy
 
 Redis
 ├── Student Profile（学生画像）
@@ -376,6 +617,10 @@ OCRResult
 
 GradingResult
 = 当前 Submission 成功完成 Workflow 后的最终批改事实
+
+Knowledge Point / Error Type Taxonomy
+= 系统标准参考字典
+= 不表示某个学生本次发生了什么
 ```
 
 `Submission` 是学生侧当前批改状态事实源，不另建 `grading_task` 事实表。`OCRResult` 属于可追溯的批改证据数据，不进入 Student / Class Profile 聚合核心指标；Profile 仍以 `GradingResult` 的稳定结构化事实作为主要输入。
@@ -517,6 +762,8 @@ Teacher Agent 完整能力规划包含 9 个核心 Tool（工具）。Tool 按�
 
 当前阶段暂不建设 RAG / Teaching Knowledge Base，因此 `search_teaching_materials` 仅保留 Tool Contract，不进入当前实现范围。当前阶段实际实现其余 8 个 Tool。
 
+本节所有 `knowledge_point_key / knowledge_point_keys / error_code / common_error_codes` 均使用 3.2 定义的标准 `level = 2` 编码。Tool 不以 `raw_name / raw_type` 作为主要统计或过滤标识；需要返回具体历史诊断证据时，可以同时返回这些 raw 字段。
+
 其中新增的两个业务对象发现 Tool：
 
 ```text
@@ -617,8 +864,8 @@ MySQL 重算
 ```text
 student_id（学生ID）                  必填
 subject（学科）                       可选
-knowledge_point_key（知识点标识）     可选
-error_code（错误类型）                可选
+knowledge_point_key（标准二级知识点标识） 可选
+error_code（标准二级错误类型）        可选
 homework_id（作业ID）                 可选
 start_time（开始时间）                可选
 end_time（结束时间）                  可选
@@ -637,8 +884,8 @@ GradingResult[]（历史批改结果列表）
 题目
 学生作答
 得分
-知识点表现
-错误
+知识点表现（含标准 key/name 与 raw_name）
+错误（含标准 code/type 与 raw_type）
 当前题反馈
 批改时间
 ```
@@ -889,7 +1136,7 @@ MySQL
 query（查询内容）                       必填
 
 subject（学科）                         可选
-knowledge_point_key（知识点标识）       可选
+knowledge_point_key（标准二级知识点标识） 可选
 grade（年级）                           可选
 ```
 
@@ -923,7 +1170,7 @@ TeachingMaterial[]（教学材料列表）
 
 ```text
 subject（学科）                        必填
-knowledge_point_keys（知识点）        必填
+knowledge_point_keys（标准二级知识点标识） 必填
 
 difficulty（难度）                    可选
 question_type（题型）                 可选
@@ -931,13 +1178,15 @@ count（数量）                         可选
 exclude_question_ids（排除题目）      可选
 ```
 
+题库题目的知识点标签与学习画像使用同一套 Knowledge Point Taxonomy，因此 Student / Class Profile 中的标准 `knowledge_point_key` 可以直接作为题库检索条件，不增加额外知识点映射层。
+
 **输出**
 
 ```text
 Question[]（题目列表）
 ├── question_id（题目ID）
 ├── content（题目内容）
-├── knowledge_points（知识点）
+├── knowledge_points（标准知识点）
 ├── difficulty（难度）
 ├── question_type（题型）
 └── answer / reference_answer（参考答案）
@@ -956,9 +1205,10 @@ MySQL Question Database（题库）
 ```text
 03 数据基础与学习画像模型
 │
-├── MySQL 事实模型
+├── MySQL 业务事实
 ├── OCRResult 批改证据
-├── Knowledge Point / Error 标准化
+├── Knowledge Point / Error Type Taxonomy 标准参考字典
+├── GradingResult Knowledge Point / Error 诊断事实
 ├── Student Profile（学生画像）
 ├── Class Profile（班级画像）
 ├── Homework Analysis（作业分析）
