@@ -5,7 +5,7 @@
 `GradingResult` 是当前有效 `Submission` 经过完整 Grading Workflow 后，对业务层输出的**唯一最终批改结果**。
 
 ```text
-Submission（当前版本）
+Submission（当前提交）
     ↓
 完整 Grading Workflow
     ↓
@@ -29,28 +29,43 @@ GradingResult（当前有效结果）
 ### 2.1 一个当前有效 Submission 对应一个当前有效 GradingResult
 
 ```text
-Submission version N
+Submission（当前提交）
     ↓
 完整 Workflow
     ↓
-GradingResult
+GradingResult（当前有效结果）
 ```
 
 Workflow 内部即使发生多个模型调用、Evidence Extraction、Scoring、模型路由或工具调用，对业务层仍然只输出一个最终结果。
 
-如果学生重新提交，`Submission.version` 增加并覆盖旧提交内容。旧版本对应的异步 `GradingTask` 即使晚于新任务完成，也不得覆盖当前结果。
-
-写入当前 `GradingResult` 前必须满足：
+当前关系固定为：
 
 ```text
-GradingTask.submission_version
-==
-Submission.version
+Submission.status = SUCCEEDED
+→ 当前 GradingResult 有效并可以展示
+
+Submission.status = PENDING / RUNNING / FAILED
+→ 不存在可展示的当前成功 GradingResult
 ```
 
-不满足时，该任务已经过期，其结果直接失效。
+如果学生在 `SUCCEEDED / FAILED` 后重新提交：
 
-`GradingTask` 属于工程执行层，不嵌入 `GradingResult` Schema。
+```text
+删除旧 GradingResult
+↓
+删除旧 OCRResult
+↓
+复用同一 Submission
+↓
+status = PENDING
+current_stage = QUEUED
+↓
+重新执行完整 Workflow
+↓
+成功后写入新的当前 GradingResult
+```
+
+`GradingResult.submission_id` 始终指向当前 Submission。第一版不保存旧批改版本，也不使用 `Submission.version / submission_version / GradingTask` 解决结果竞争；`PENDING / RUNNING` 时禁止再次提交，因此同一道题任意时刻最多只有一个运行中的批改 Workflow。
 
 ### 2.2 数学和英语共用一个顶层结构
 
