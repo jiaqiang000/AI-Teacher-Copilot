@@ -500,6 +500,35 @@ input_schema
 
 模型根据这三部分判断是否调用 Tool，以及如何生成调用参数。
 
+### 3.1 Taxonomy Contract（标准分类契约）
+
+所有 Teacher Agent Tool 中出现的：
+
+```text
+knowledge_point_key
+knowledge_point_keys
+error_code
+common_error_codes
+```
+
+统一引用 `docs/03-05-teacher-intelligence-data-profile-tools.md` 定义的系统标准 Taxonomy，并且表示可以进入业务事实和统计体系的 `level = 2` 编码。
+
+统一规则：
+
+```text
+标准 knowledge_point_key / error_code
+→ 用于 Profile / Analysis / Tool 过滤 / 题库检索 / 统计
+
+raw_name / raw_type
+→ 保存某次 GradingResult 的具体诊断语义
+→ 用于证据展示、历史下钻和排查
+→ 不作为主要统计或 Tool 过滤标识
+```
+
+因此 Teacher Agent 不需要自行把自然语言知识点再次映射成另一套内部分类；Profile、Grading History、Question Bank 等能力统一使用同一套标准 `knowledge_point_key`。
+
+`get_student_grading_history` 等返回具体批改事实的 Tool 可以同时返回 `raw_name / raw_type`，让教师和 Agent 查看“这一次具体发生了什么”；聚合型 Tool 仍以标准 `key / code` 为主。
+
 ---
 
 ## 4. name（名称）
@@ -943,14 +972,14 @@ Redis → Miss 后基于 MySQL 重算
 
 ```text
 输入
-student_id（学生ID）                  必填
-subject（学科）                       可选
-knowledge_point_key（知识点标识）     可选
-error_code（错误类型）                可选
-homework_id（作业ID）                 可选
-start_time（开始时间）                可选
-end_time（结束时间）                  可选
-limit（返回数量）                     可选
+student_id（学生ID）                         必填
+subject（学科）                              可选
+knowledge_point_key（标准二级知识点标识）    可选
+error_code（标准二级错误类型编码）           可选
+homework_id（作业ID）                        可选
+start_time（开始时间）                       可选
+end_time（结束时间）                         可选
+limit（返回数量）                            可选
 
 输出
 GradingResult[]
@@ -958,6 +987,8 @@ GradingResult[]
 数据来源
 MySQL
 ```
+
+返回具体 GradingResult 诊断事实时，应保留标准 `key / code` 对应的显示名称，并同时返回 `raw_name / raw_type`，用于查看某一次真实作答中更具体的知识点和错误语义。
 
 定位：
 
@@ -1102,10 +1133,10 @@ representative_errors（典型错误证据）
 
 ```text
 输入
-query（查询内容）                       必填
-subject（学科）                         可选
-knowledge_point_key（知识点标识）       可选
-grade（年级）                           可选
+query（查询内容）                              必填
+subject（学科）                                可选
+knowledge_point_key（标准二级知识点标识）      可选
+grade（年级）                                  可选
 
 输出
 TeachingMaterial[]
@@ -1132,12 +1163,12 @@ TeachingMaterial
 
 ```text
 输入
-subject（学科）                        必填
-knowledge_point_keys（知识点）         必填
-difficulty（难度）                    可选
-question_type（题型）                 可选
-count（数量）                         可选
-exclude_question_ids（排除题目）      可选
+subject（学科）                               必填
+knowledge_point_keys（标准二级知识点标识）    必填
+difficulty（难度）                           可选
+question_type（题型）                        可选
+count（数量）                                可选
+exclude_question_ids（排除题目）             可选
 
 输出
 Question[]
@@ -1146,13 +1177,15 @@ Question[]
 MySQL Question Database（题库）
 ```
 
+题库中的知识点标签与 Student / Class Profile 使用同一套 Knowledge Point Taxonomy，因此画像得到的标准 `knowledge_point_key` 可以直接作为 `search_question_bank` 的检索条件，不增加第二套知识点映射。
+
 返回结构：
 
 ```text
 Question
 ├── question_id（题目ID）
 ├── content（题目内容）
-├── knowledge_points（知识点）
+├── knowledge_points（标准知识点）
 ├── difficulty（难度）
 ├── question_type（题型）
 └── answer / reference_answer（参考答案）
