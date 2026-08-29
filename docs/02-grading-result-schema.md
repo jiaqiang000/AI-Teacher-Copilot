@@ -123,23 +123,40 @@ GradingResult
 
 ### 2.4 difficulty（难度）仅用于数学模型路由
 
-教师不需要填写题目难度。
+教师不需要手工填写数学题难度，但 `difficulty` 必须在 Question 创建 / 加入 Homework 时先确定并保存为题目属性，而不是等学生提交后再识别。
 
 数学题：
 
 ```text
-Question
-   ↓
-Qwen3.5-4B
-   ↓
-difficulty = easy / medium / hard
-   ↓
+Question 创建阶段
+        ↓
+确定 difficulty = easy / medium / hard
+        ↓
+保存 Question.difficulty
+        ↓
+学生提交
+        ↓
+Grading Workflow 读取 Question.difficulty
+        ↓
 模型路由
 ```
 
-识别结果进入 `GradingResult`，既可以用于工程统计，也可以用于后续分析模型路由效果。
+来源规则：
 
-英语作文当前固定使用 `DeepSeek v4 Flash` 两阶段批改，不进行 difficulty classification，因此英语作文的 `difficulty` 允许为 `null`。
+```text
+教师自行创建数学题
+→ Qwen3.5-4B 预判 difficulty
+→ 教师发布前确认 / 可修改
+→ 保存 Question.difficulty
+
+从题库添加数学题
+→ 直接复制 QuestionBankItem.difficulty
+→ 不重复调用 difficulty classifier
+```
+
+`GradingResult.difficulty` 直接复制当前 `Question.difficulty`，用于记录这次批改对应题目的稳定难度属性，并支持后续模型路由效果统计。
+
+英语作文当前固定使用 `DeepSeek v4 Flash` 两阶段批改，不进行 easy / medium / hard 模型路由，因此英语作文的 `difficulty` 允许为 `null`。
 
 ### 2.5 GradingResult 只保存“当前这次批改”的反馈
 
@@ -219,7 +236,7 @@ GradingResult
 | `submission_id（学生提交ID）` | 对应当前哪个学生提交 |
 | `subject（学科）` | `math` / `english` |
 | `question_type（题型）` | 如 `calculation` / `solution` / `essay` |
-| `difficulty（难度）` | 数学题由 `Qwen3.5-4B` 识别为 `easy` / `medium` / `hard`；英语作文当前为 `null` |
+| `difficulty（难度）` | 数学题直接复制当前 `Question.difficulty`，取值为 `easy` / `medium` / `hard`；英语作文当前为 `null` |
 
 `student_id（学生ID）`、`question_id（题目ID）`、`homework_id（作业ID）` 不需要在逻辑 Schema 中重复保存，通过 `submission_id（学生提交ID）` 可以关联获得。是否在数据库层做冗余字段优化，留到数据库设计阶段决定。
 
@@ -677,14 +694,13 @@ execution_meta（执行元数据）
   "execution_meta": {
     "route": "strong_model",
     "models_used": [
-      "Qwen3.5-4B",
       "DeepSeek v4 Flash"
     ]
   }
 }
 ```
 
-这里 `Qwen3.5-4B` 用于 difficulty classification，`DeepSeek v4 Flash` 用于困难题正式批改。
+`models_used[]` 只记录当前 Submission 的 Grading Workflow 实际调用过的模型。Question 创建阶段用于 difficulty classification 的模型调用不属于当前 Submission 的 Grading Workflow，因此不写入这里。
 
 英语作文：
 
