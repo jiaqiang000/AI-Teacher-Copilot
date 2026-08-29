@@ -82,23 +82,44 @@ GradingResult
 └── english_essay_detail（英语作文详情）   可选
 ```
 
-### 2.3 知识点由模型自动识别
+### 2.3 Knowledge Point / Error Type 采用“标准分类 + 原始语义”
 
-当前 MVP 不要求教师逐题手动标注知识点。
+当前 MVP 不要求教师逐题手动标注 Knowledge Point（知识点）或 Error Type（错误类型）。系统维护当前学科可用的两级标准 Taxonomy：
 
 ```text
-Question + Student Answer
-          ↓
-      Grading Model
-          ↓
-自动识别 Knowledge Points
-          ↓
-     GradingResult
+subject（学科）
+    ↓
+level = 1  大类
+    ↓
+level = 2  小类
+    └── OTHER 兜底小类
 ```
 
-知识点是模型产生的结构化诊断结果。
+真正进入 `GradingResult` 的 `knowledge_point.key / error.code` 只能使用当前学科 Taxonomy 中的 `level = 2` 编码。
 
-为了支持后续统计，不能长期依赖完全自由的自然语言名称。当前 Schema 同时保留 `name（知识点名称）` 和可标准化的 `key（知识点标识）`；知识点标准化、同义词归一和知识体系映射在后续数据沉淀阶段处理。
+Grading Workflow 中：
+
+```text
+Question.subject
+        ↓
+加载当前学科 Taxonomy
+        ↓
+将标准候选提供给 Grading Model
+        ↓
+模型选择标准 key / code
++
+输出 raw_name / raw_type
+        ↓
+TaxonomyValidator
+        ↓
+GradingResult
+```
+
+因此这里不是“模型自由生成名称，后续再做一次 LLM 映射”。标准 `key / code` 用于机器统计和检索，`raw_name / raw_type` 始终保留本次模型实际识别出的具体自然语言语义。
+
+如果现有小类无法精确表达本次诊断，模型使用最合适大类下的 `OTHER`，但仍必须通过 `raw_name / raw_type` 保存具体语义。
+
+`name（知识点名称） / type（错误类型名称）` 是标准字典中与 `key / code` 对应的展示名称，由系统根据标准字典补齐，不由模型自由决定。
 
 ### 2.4 difficulty（难度）仅用于数学模型路由
 
@@ -257,6 +278,7 @@ Teacher Agent 查询
 {
   "key": "math.linear_equation.transposition",
   "name": "移项",
+  "raw_name": "一元一次方程移项时的符号处理",
   "performance": "incorrect",
   "evidence": "学生将 +4 移到等号右侧后仍写成 +4"
 }
@@ -266,8 +288,9 @@ Teacher Agent 查询
 
 | 字段 | 含义 |
 |---|---|
-| `key（知识点标识）` | 可归一化的知识点标识；当前可以由模型输出，后续统一映射 |
-| `name（知识点名称）` | 面向人的知识点名称 |
+| `key（知识点标识）` | 当前学科标准 Taxonomy 中的 `level = 2` 知识点标识，用于统计和检索 |
+| `name（知识点名称）` | `key` 对应的标准显示名称，由系统字典确定 |
+| `raw_name（原始知识点语义）` | 模型对本次实际识别知识点的自然语言概括，每条知识点事实都保存 |
 | `performance（当前表现）` | 当前这道题上该知识点表现 |
 | `evidence（判断证据）` | 为什么判断该知识点表现如此 |
 
@@ -293,6 +316,7 @@ incorrect（错误）
 {
   "code": "SIGN_ERROR",
   "type": "符号错误",
+  "raw_type": "移项时未改变符号",
   "knowledge_point_key": "math.linear_equation.transposition",
   "description": "移项后没有改变符号",
   "evidence": "+4 移到右侧后仍写为 +4"
@@ -303,15 +327,29 @@ incorrect（错误）
 
 | 字段 | 含义 |
 |---|---|
-| `code（错误编码）` | 用于程序统计的标准错误类型 |
-| `type（错误类型）` | 面向教师/学生的名称 |
-| `knowledge_point_key（关联知识点标识）` | 错误关联到哪个知识点 |
-| `description（错误描述）` | 错误原因描述 |
-| `evidence（错误证据）` | 从学生作答中找到的证据 |
+| `code（错误编码）` | 当前学科标准 Taxonomy 中的 `level = 2` 错误编码，用于统计和检索 |
+| `type（错误类型）` | `code` 对应的标准显示名称，由系统字典确定 |
+| `raw_type（原始错误语义）` | 模型对本次实际发生错误的简短自然语言概括，每条错误事实都保存 |
+| `knowledge_point_key（关联知识点标识）` | 错误关联到哪个标准 `level = 2` 知识点 |
+| `description（错误描述）` | 对本次错误原因的展开说明 |
+| `evidence（错误证据）` | 从学生作答中找到的直接证据 |
 
-后续班级统计应该优先统计 `code（错误编码）`，而不是统计自然语言 `description（错误描述）`。
+后续班级统计应该优先统计 `code（错误编码）`，而不是统计自然语言 `raw_type / description`。
 
 数学步骤上的原图定位信息不重复塞进公共 `diagnosis.errors[]`。真正需要定位的 OCR Block 由 `math_detail.steps[].error_block_ids` 保存，再通过对应 `OCRResult.layout_details` 回查 `bbox2d`。
+
+### 6.3 Taxonomy 约束
+
+`diagnosis.knowledge_points[] / diagnosis.errors[]` 固定遵守：
+
+1. `key / code` 必须存在于当前 `subject` 的标准 Taxonomy。
+2. `GradingResult` 只保存可落库的 `level = 2` 小类，不直接保存 `level = 1` 大类作为诊断事实。
+3. Grading Model 不得自行创造新的标准 `key / code`。
+4. 当前标准字典没有精确小类时，选择最合适大类下的 `OTHER`。
+5. `raw_name / raw_type` 每条诊断都保存；使用 `OTHER` 时尤其不能省略具体 raw 语义。
+6. `name / type` 由系统根据标准字典中的 `key / code` 补齐，不要求模型重复生成标准名称。
+
+最终持久化和 Validator 规则见 `docs/03-05-teacher-intelligence-data-profile-tools.md`。
 
 ---
 
@@ -549,7 +587,7 @@ english_essay_detail（英语作文详情）
     },
     "language_errors": [
       {
-        "type": "TENSE_ERROR",
+        "error_code": "TENSE_ERROR",
         "original": "I go to Beijing last summer.",
         "suggestion": "I went to Beijing last summer."
       }
@@ -575,12 +613,14 @@ score（该维度得分）
 max_score（该维度满分）
 
 language_errors（语言错误列表）
-type（错误类型）
+error_code（关联公共 diagnosis.errors 的标准错误编码）
 original（原句）
 suggestion（修改建议）
 
 evidence（评分证据）
 ```
+
+标准错误的完整诊断语义统一保存在公共 `diagnosis.errors[]`；`language_errors` 只补充英语作文特有的原句和修改建议，不维护第二套错误类型定义。
 
 英语作文的知识点也进入公共 `diagnosis.knowledge_points（知识点列表）`，例如：
 
@@ -589,12 +629,14 @@ evidence（评分证据）
   {
     "key": "english.grammar.past_tense",
     "name": "一般过去时",
+    "raw_name": "描述过去经历时的一般过去时使用",
     "performance": "incorrect",
     "evidence": "描述去年暑假经历时多次使用一般现在时"
   },
   {
     "key": "english.writing.cohesion",
     "name": "篇章衔接",
+    "raw_name": "段落之间使用连接词形成篇章衔接",
     "performance": "partial",
     "evidence": "段落基本完整，但连接词使用较少"
   }
@@ -684,14 +726,9 @@ execution_meta（执行元数据）
   "diagnosis": {
     "knowledge_points": [
       {
-        "key": "math.linear_equation",
-        "name": "一元一次方程",
-        "performance": "partial",
-        "evidence": "能够正确建立方程，但后续移项出现错误"
-      },
-      {
         "key": "math.linear_equation.transposition",
         "name": "移项",
+        "raw_name": "一元一次方程移项时的符号处理",
         "performance": "incorrect",
         "evidence": "移项后符号没有改变"
       }
@@ -700,6 +737,7 @@ execution_meta（执行元数据）
       {
         "code": "SIGN_ERROR",
         "type": "符号错误",
+        "raw_type": "移项时未改变符号",
         "knowledge_point_key": "math.linear_equation.transposition",
         "description": "移项后没有改变符号",
         "evidence": "+4 移到右侧后仍写为 +4"
@@ -802,12 +840,14 @@ score.max    = 3 + 4 + 3 = 10
       {
         "key": "english.grammar.past_tense",
         "name": "一般过去时",
+        "raw_name": "描述过去经历时的一般过去时使用",
         "performance": "incorrect",
         "evidence": "描述过去经历时多次错误使用一般现在时"
       },
       {
         "key": "english.writing.cohesion",
         "name": "篇章衔接",
+        "raw_name": "段落之间使用连接词形成篇章衔接",
         "performance": "partial",
         "evidence": "段落完整，但连接词较少"
       }
@@ -816,6 +856,7 @@ score.max    = 3 + 4 + 3 = 10
       {
         "code": "TENSE_ERROR",
         "type": "时态错误",
+        "raw_type": "描述过去经历时使用一般现在时",
         "knowledge_point_key": "english.grammar.past_tense",
         "description": "描述过去经历时使用一般现在时",
         "evidence": "I go to Beijing last summer."
@@ -858,7 +899,7 @@ score.max    = 3 + 4 + 3 = 10
     },
     "language_errors": [
       {
-        "type": "TENSE_ERROR",
+        "error_code": "TENSE_ERROR",
         "original": "I go to Beijing last summer.",
         "suggestion": "I went to Beijing last summer."
       }
@@ -892,24 +933,26 @@ score.max    = 3 + 4 + 3 = 10
 ```text
 score.rate（得分率）
 
-diagnosis.knowledge_points[].key（知识点标识）
+diagnosis.knowledge_points[].key（标准知识点标识）
 diagnosis.knowledge_points[].performance（当前知识点表现）
 
-diagnosis.errors[].code（错误编码）
+diagnosis.errors[].code（标准错误编码）
 
 subject（学科）
 question_type（题型）
 difficulty（数学难度；英语当前为空）
 ```
 
-主要用于展示、过程解释或追溯，不直接作为长期画像核心统计值：
+需要落库并用于展示、下钻、过程解释或追溯，但不直接作为长期画像核心聚合键：
 
 ```text
+diagnosis.knowledge_points[].raw_name（本次具体知识点语义）
+diagnosis.errors[].raw_type（本次具体错误语义）
+diagnosis.*.evidence（诊断证据）
+
 feedback.summary（总体评价）
 feedback.strengths（做得好的地方）
 feedback.improvements（需要改进的地方）
-
-diagnosis.*.evidence（诊断证据）
 
 math_detail.final_answer（数学最终答案）
 math_detail.steps[].description（步骤说明）
@@ -920,8 +963,10 @@ math_detail.steps[].feedback（步骤反馈）
 english_essay_detail.evidence（英语作文评分证据）
 ```
 
+`raw_name / raw_type` 必须作为诊断事实保存，但 Profile / Analysis 仍使用标准 `knowledge_point_key / error_code` 作为主要聚合维度；raw 字段主要用于教师查看具体语义、历史证据下钻、工程排查以及未来扩充 Taxonomy。
+
 数学步骤中的 `status / earned_score / max_score` 主要用于当前题步骤评分、学生展示和批改追溯；长期画像仍优先使用统一的 `score.rate`、知识点表现和标准错误编码，避免画像过度依赖某一道题的动态步骤划分。
 
 也就是说：
 
-> **长期画像尽量建立在结构化、可统计的稳定信号上；步骤文本、OCR Block 和自然语言反馈主要用于当前批改解释、原图定位与追溯。**
+> **长期画像尽量建立在结构化、可统计的稳定信号上；raw 语义、步骤文本、OCR Block 和自然语言反馈主要用于当前批改解释、具体证据展示与追溯。**
