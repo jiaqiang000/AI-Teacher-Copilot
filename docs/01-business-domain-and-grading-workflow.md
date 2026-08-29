@@ -1,4 +1,4 @@
-# AI Teacher Copilot：业务边界与批改工作流设计
+# AI Teacher Copilot：业务边界、作业创建与批改工作流设计
 
 ## 1. MVP 业务边界
 
@@ -44,8 +44,10 @@ Class
 Homework
    │
    ↓
-Question
-   │
+Question ←──── QuestionBankItem
+   │               ↑
+   │               │
+   │          Question Bank
    ↓
 Submission ← Student
    │
@@ -63,12 +65,13 @@ GradingResult
 | `Teacher` | 教师 |
 | `Student` | 学生 |
 | `Class` | 班级 |
-| `Homework` | 一次作业 |
-| `Question` | 作业中的一道题 |
+| `Homework` | 一次作业，先以草稿存在，发布后学生可见 |
+| `Question` | 已经属于某个 Homework、真正布置给学生的一道题 |
+| `QuestionBankItem` | 系统题库中的可复用题目资源，不直接属于某个 Homework |
 | `Submission` | 一个学生对一道题当前有效的答案，同时保存当前批改状态和执行阶段 |
 | `GradingResult` | 当前 Submission 成功完成完整 Workflow 后的最终批改结果 |
 
-其中最关键的是 `Question`、`Submission` 和 `GradingResult`。
+其中最关键的是 `Question`、`Submission` 和 `GradingResult`。`QuestionBankItem` 只作为可复用题目来源；题库题被加入 Homework 时会复制成新的 `Question`，不会让已发布作业实时引用题库记录。
 
 Knowledge Point（知识点）和 Error Type（错误类型）不要求教师逐题手工维护。当前 MVP 已维护轻量的两级标准 Taxonomy：系统根据 `Question.subject` 读取当前学科允许的标准分类，并在正式批改时把标准 `level = 2` 候选提供给 Grading Model。模型从候选中选择 `knowledge_point_key / error_code`，同时生成 `raw_name / raw_type` 保留本次实际诊断语义；无法精确匹配现有小类时使用对应大类下的 `OTHER`。后端只通过 `TaxonomyValidator` 做确定性合法性校验，不增加独立标准化 Agent、Embedding Mapping 或第二次 LLM 映射。
 
@@ -88,10 +91,32 @@ name: 八年级数学周末作业
 class_id: class_03
 teacher_id: teacher_01
 subject: math
-published_at: ...
+status: DRAFT
+published_at: null
 ```
 
-包含：
+`Homework.status` 当前只保留两个状态：
+
+```text
+DRAFT（草稿）
+= 教师正在创建作业
+= 可以添加、修改、删除、排序 Question
+
+PUBLISHED（已发布）
+= 学生可见
+= 当前 MVP 不再允许修改已发布 Question
+```
+
+发布时：
+
+```text
+status = PUBLISHED
+published_at = 当前时间
+```
+
+当前 MVP 不增加定时发布、撤回、Homework 版本或审批流程。
+
+一个 Homework 包含多道实际作业题：
 
 ```text
 Homework hw_001
@@ -116,32 +141,72 @@ Homework
 
 学生不是随意上传一张来源未知的图片，而是先存在 `Question`，学生选择题目后再提交答案。
 
+`Question` 表示已经进入某个 Homework 的实际作业题，第一版逻辑结构固定为：
+
+```text
+Question
+├── question_id（题目ID）
+├── homework_id（作业ID）
+├── question_no（题号）
+│
+├── subject（学科）
+├── question_type（题型）
+├── difficulty（难度）
+│
+├── content（题目文本）
+├── image_url（题目原图，可选）
+├── max_score（满分）
+│
+└── source_question_bank_item_id（来源题库题ID，可选）
+```
+
+字段职责：
+
+```text
+subject
+= 继承所属 Homework.subject
+
+question_type
+= 数学当前为 calculation / solution
+= 英语当前为 essay
+
+difficulty
+= 数学 Question 的稳定题目属性
+= easy / medium / hard
+= 在 Question 创建 / 加入 Homework 时确定
+= 英语作文当前为 null
+
+content
+= 学生真正看到和批改 Workflow 使用的正式题目文本
+
+image_url
+= 教师通过图片创建题目时可保留的题目原图
+= 手动输入纯文本题目时可为空
+
+source_question_bank_item_id
+= 从题库复制时记录来源 QuestionBankItem ID
+= 教师自行创建时为 null
+= 只用于来源追踪，不表示实时引用关系
+```
+
 #### 数学 Question
 
 例如：
 
 ```text
 question_id: q001
-
-question_no:
-1
-
-subject:
-math
-
-question_type:
-calculation
-
-content:
-解方程 2x + 4 = 8
-
-max_score:
-10
+homework_id: hw_001
+question_no: 1
+subject: math
+question_type: calculation
+difficulty: easy
+content: 解方程 2x + 4 = 8
+image_url: null
+max_score: 10
+source_question_bank_item_id: null
 ```
 
 数学步骤分由批改模型根据正式题目、题目总分和学生实际 OCR 作答动态判断，不要求教师预先维护固定解法或固定步骤评分模板。
-
-`difficulty` 不要求教师维护，由 `Qwen3.5-4B` 在数学批改 Workflow 中自动识别。
 
 #### 英语作文 Question
 
@@ -149,21 +214,15 @@ max_score:
 
 ```text
 question_id: q101
-
-question_no:
-1
-
-subject:
-english
-
-question_type:
-essay
-
-content:
-Write an article about your summer vacation.
-
-max_score:
-20
+homework_id: hw_101
+question_no: 1
+subject: english
+question_type: essay
+difficulty: null
+content: Write an article about your summer vacation.
+image_url: null
+max_score: 20
+source_question_bank_item_id: null
 
 rubric:
 ├── Content: 5
@@ -172,14 +231,7 @@ rubric:
 └── Vocabulary: 5
 ```
 
-因此从一开始，`Question` 必须包含：
-
-```text
-Question
-├── question_no（题号）
-├── subject（学科）
-└── question_type（题型）
-```
+英语 Rubric 的固定规则在后续对应设计中单独确定；本节只保持当前英语作文批改输入不变。
 
 `question_no（题号）` 表示题目在当前 Homework（作业）中的展示序号。例如：
 
@@ -191,9 +243,219 @@ question_no = 8
 
 教师和学生看到的是“第 8 题”，系统内部仍然使用 `question_id` 标识具体题目。同一个 Homework 内 `question_no` 不重复。教师创建作业题目时，由前端按顺序默认生成 `1、2、3……`，需要时允许教师调整。
 
-后面的 Workflow 直接依据这些业务属性路由，不再使用 LLM 重复识别学科和题型。
+后面的 Grading Workflow 直接依据这些业务属性路由，不再使用 LLM 重复识别学科、题型或题目难度。
 
-### 3.3 Submission
+#### 3.2.1 Question 创建来源
+
+当前 MVP 的 Question 只有两类来源：
+
+```text
+方式 A：教师自行创建
+├── 手动输入题目文本
+└── 上传题目图片
+
+方式 B：从 Question Bank 选择
+└── QuestionBankItem → Copy → Question
+```
+
+核心边界：
+
+```text
+QuestionBankItem
+= 可复用题库资源
+
+Question
+= 某个 Homework 中真正布置出去的题
+```
+
+题库题加入 Homework 时必须复制成新的 Question：
+
+```text
+QuestionBankItem qb_001
+        ↓ Copy
+Question q008
+```
+
+复制后的 `Question` 自己保存实际作业题内容和难度。以后 `qb_001` 被修改，不会修改已经存在或已经发布的 `q008`。
+
+#### 3.2.2 difficulty（难度）确定规则
+
+`difficulty` 是题目的属性，不是学生答案的属性，因此数学题只在进入 Homework 时确定一次。
+
+教师自行创建数学题：
+
+```text
+教师输入题目文本
+或
+教师上传题目图片 → OCR 得到题目文本
+        ↓
+Qwen3.5-4B
+        ↓
+difficulty = easy / medium / hard
+        ↓
+前端展示预判结果
+        ↓
+教师确认 / 可修改
+        ↓
+保存 Question.difficulty
+```
+
+这里 AI 只负责预判；教师在发布前可以修改，最终写入 `Question.difficulty` 的值才是后续业务使用的稳定值。
+
+从题库加入数学题：
+
+```text
+QuestionBankItem.difficulty
+        ↓ Copy
+Question.difficulty
+```
+
+这种路径不重新调用 difficulty classifier。
+
+英语作文当前：
+
+```text
+Question.difficulty = null
+```
+
+学生 Grading Workflow **不得重新识别 difficulty**，只读取已经保存的 `Question.difficulty` 做模型路由。
+
+### 3.3 Teacher Homework Authoring Workflow（教师作业创建与发布）
+
+当前系统正式补齐教师端作业创建入口：
+
+```text
+Teacher
+↓
+创建 Homework
+↓
+status = DRAFT
+↓
+添加 Question
+├── 手动输入题目
+├── 上传题目图片
+└── 从 Question Bank 选择
+↓
+教师预览 / 修改 / 确认
+↓
+调整 question_no / 顺序
+↓
+发布 Homework
+↓
+status = PUBLISHED
+↓
+学生可见
+```
+
+#### 路径 A：手动输入题目
+
+```text
+创建 Homework
+↓
+DRAFT
+↓
+教师输入题目文本
+↓
+subject 继承 Homework.subject
+↓
+确定 question_type
+├── 数学：教师选择 calculation / solution
+└── 英语：当前固定 essay
+↓
+教师填写 max_score
+↓
+数学 → Qwen3.5-4B 预判 difficulty
+英语 → difficulty = null
+↓
+前端预览
+↓
+教师确认 / 可修改
+↓
+保存 Question
+```
+
+#### 路径 B：上传题目图片
+
+```text
+教师上传题目图片
+↓
+保存题目图片
+↓
+复用 OCR Service
+↓
+提取题目 content
+↓
+数学 → Qwen3.5-4B 预判 difficulty
+英语 → difficulty = null
+↓
+前端展示 content / difficulty
+↓
+教师修正并确认
+↓
+保存 Question
+```
+
+这里复用 OCR 能力，但**不创建 `OCRResult`**。`OCRResult` 仍然只表示学生 `Submission` 的 OCR 批改证据。
+
+教师题目 OCR 最终只沉淀：
+
+```text
+Question.content
+= OCR 后经教师确认的正式题目文本
+
+Question.image_url
+= 教师上传的题目原图，可选保留
+```
+
+#### 路径 C：从 Question Bank 添加
+
+```text
+教师打开题库
+↓
+按知识点 / 难度 / 题型 / 年级筛选
+↓
+选择 QuestionBankItem
+↓
+复制到 Question
+├── subject
+├── question_type
+├── difficulty
+├── content
+└── image_url
+↓
+教师设置 max_score
+↓
+生成新的 question_id / question_no
+↓
+source_question_bank_item_id = 原题库题ID
+```
+
+`reference_answer` 仍属于题库资源，不在本次 Question 数据模型中新增第二套答案字段；学生批改流程继续以正式题目、学生作答和既有批改 Contract 为准。
+
+#### 发布前最小校验
+
+当前 MVP 发布 Homework 前至少检查：
+
+```text
+Homework.status = DRAFT
+至少存在 1 道 Question
+question_no 在当前 Homework 内唯一
+Question.content 非空
+Question.max_score > 0
+数学 Question.difficulty 非空
+Question.subject 与 Homework.subject 一致
+```
+
+校验通过后：
+
+```text
+Homework.status = PUBLISHED
+Homework.published_at = 当前时间
+```
+
+当前 MVP 发布后不再修改 Question，避免学生已经开始作答后题目内容发生变化。
+
+### 3.4 Submission
 
 `Submission` 表示：
 
@@ -314,17 +576,30 @@ Idempotency Key
                            ↓
                     创建 Homework
                            ↓
-                    添加 Question
-                           │
-              ┌────────────┴────────────┐
-              ↓                         ↓
-           Math题目                 English作文
-              │                         │
-       题目内容 / max_score          作文题目/Rubric
-              │                         │
-              └────────────┬────────────┘
+                      status=DRAFT
                            ↓
-                       发布作业
+                     添加 Question
+             ┌─────────────┼─────────────┐
+             ↓             ↓             ↓
+          手动输入       上传题目图片     从题库选择
+             │             │             │
+             │            OCR       QuestionBankItem
+             │             │             │
+             └──────┬──────┘          Copy
+                    ↓                   │
+             正式题目 content           │
+                    ↓                   │
+        数学自建题 difficulty 预判       │
+                    ↓                   │
+              教师预览 / 修改 / 确认 ←──┘
+                    ↓
+                 Question
+                    ↓
+             调整 question_no
+                    ↓
+                 发布作业
+                    ↓
+              status=PUBLISHED
 
 =================================================
 
@@ -361,13 +636,14 @@ Idempotency Key
                     结构化内容解析
                            ↓
               读取 Question 业务属性
-               subject / question_type
+        subject / question_type / difficulty
                            ↓
                     按业务属性路由
                       ↙         ↘
                    Math        English
                     ↓             ↓
-                数学批改       作文批改
+              按 difficulty      作文批改
+                模型路由
                     ↓             ↓
                   标准 Taxonomy 校验
                     ↓             ↓
@@ -382,17 +658,17 @@ Idempotency Key
                          MySQL
 ```
 
-这构成当前整个学生批改业务闭环。
+这构成当前教师创建作业、学生提交和自动批改的完整 MVP 闭环。
 
 其中：
 
-- `subject` 和 `question_type` 由教师创建 `Question` 时确定，批改 Workflow 直接读取，不再让模型重复识别。
-- `difficulty` / 题目复杂度不要求教师填写。仅数学题进入 Math Workflow 后，由 `Qwen3.5-4B` 自动判断，并用于后续模型路由。
-- 英语作文不进行 difficulty 模型路由，固定使用 `DeepSeek v4 Flash` 完成两阶段 Workflow。
+- `subject` 和 `question_type` 在创建 `Question` 时确定，批改 Workflow 直接读取，不再让模型重复识别。
+- `difficulty` 是数学 Question 的题目属性：教师自行创建数学题时由 `Qwen3.5-4B` 预判并经教师确认；从题库添加时直接复制 `QuestionBankItem.difficulty`；学生批改 Workflow 只读取它，不再次识别。
+- 英语作文当前 `difficulty = null`，不进行 difficulty 模型路由，固定使用 `DeepSeek v4 Flash` 完成两阶段 Workflow。
 - `knowledge_points / errors` 不要求教师逐题标注。系统根据 `Question.subject` 提供当前学科标准 Taxonomy；Grading Model 从标准 `level = 2` 小类中选择 `knowledge_point_key / error_code`，同时生成 `raw_name / raw_type`，最终结果在写入 `GradingResult` 前通过 `TaxonomyValidator` 校验。
-- `OCRResult` 保存 OCR 对学生原图的结构化识别证据，为数学步骤评分、错误追溯和原图错误定位提供依据。
+- `OCRResult` 只保存 OCR 对学生 Submission 原图的结构化识别证据；教师上传题目图片时虽然复用 OCR Service，但不创建 `OCRResult`。
 - `Submission.status / current_stage` 是当前批改状态事实源；SSE / Streaming Event 只负责把状态变化实时推送给前端。
-- 用户上传后仍在 DeerFlow Chat 中实时看到 OCR、解析、难度判断、批改、结果组装等过程；本次简化只删除独立任务和版本竞争设计，不削减前端过程可视化能力。
+- 用户上传后仍在 DeerFlow Chat 中实时看到 OCR、解析、批改、结果组装等过程；difficulty classification 已从学生批改过程前移到 Question 创建阶段。
 
 ---
 
@@ -421,23 +697,15 @@ OCR
     ↓
 读取 Question
 ├── subject
-└── question_type
+├── question_type
+└── difficulty
     ↓
 按业务属性路由
 ├── Math
 └── English Essay
 ```
 
-这里不再让 Qwen 判断学科或题型。
-
-教师创建 `Question` 时已经确定：
-
-```text
-subject
-question_type
-```
-
-因此这一层采用确定性路由。
+这里不再让 Qwen 判断学科、题型或 difficulty。教师创建 `Question` 时已经确定这些业务属性（英语 difficulty 当前为 null），因此这一层采用确定性路由。
 
 ### 5.2 Submission 驱动的异步批改与实时进度
 
@@ -453,8 +721,6 @@ question_type
 ● OCR 识别中
 ↓
 ○ 作答解析
-↓
-○ 难度判断（仅数学）
 ↓
 ○ 批改
 ↓
@@ -544,31 +810,12 @@ RUNNING
 QUEUED
 OCR
 PARSING
-DIFFICULTY_CLASSIFICATION
 GRADING
 ASSEMBLING_RESULT
 COMPLETED
 ```
 
-数学正常阶段：
-
-```text
-QUEUED
-↓
-OCR
-↓
-PARSING
-↓
-DIFFICULTY_CLASSIFICATION
-↓
-GRADING
-↓
-ASSEMBLING_RESULT
-↓
-COMPLETED
-```
-
-英语作文正常阶段：
+数学和英语作文均使用同一通用阶段：
 
 ```text
 QUEUED
@@ -584,7 +831,7 @@ ASSEMBLING_RESULT
 COMPLETED
 ```
 
-英语作文**不得进入** `DIFFICULTY_CLASSIFICATION`。
+数学的模型选择发生在进入 `GRADING` 时，通过读取 `Question.difficulty` 完成，不再单独形成 `DIFFICULTY_CLASSIFICATION` 阶段。
 
 #### 5.2.4 Submission 批改字段与数据约束
 
@@ -846,7 +1093,6 @@ AI Teacher：
 ✓ 图片上传完成
 ✓ OCR 识别完成
 ● 正在解析学生作答
-○ 正在判断题目难度
 ○ 正在批改
 ○ 正在生成批改结果
 ```
@@ -857,7 +1103,6 @@ AI Teacher：
 ✓ 图片上传完成
 ✓ OCR 识别完成
 ✓ 作答解析完成
-✓ 难度判断完成
 ● 正在批改
 ○ 正在生成批改结果
 ```
@@ -880,7 +1125,7 @@ GradingResultMessage
 MessageGroup 的 AIMessage / reasoning / tool_calls 转换逻辑
 ```
 
-原因是 `OCR / PARSING / DIFFICULTY_CLASSIFICATION / GRADING` 是明确的业务 Workflow 阶段，不是 Agent Tool Call。前端复用 DeerFlow 的聊天容器、步骤组件和流式基础能力，但保持自己的 `grading.*` 业务事件协议。
+原因是 `OCR / PARSING / GRADING` 是明确的业务 Workflow 阶段，不是 Agent Tool Call。前端复用 DeerFlow 的聊天容器、步骤组件和流式基础能力，但保持自己的 `grading.*` 业务事件协议。
 
 如果批改 Workflow 接入 DeerFlow / LangGraph，可以通过 custom stream event 推送 `grading.*`；如果批改 Workflow 不依赖 DeerFlow，也继续使用同一事件协议，由自己的 SSE endpoint 推送，前端适配层不变。
 
@@ -907,10 +1152,7 @@ OCRResult 持久化
         ↓
 拼装 OCR Student Submission
         ↓
-Qwen3.5-4B
-难度识别 Prompt
-        ↓
-difficulty = easy / medium / hard
+读取 Question.difficulty
         ↓
 模型路由
 ├── easy / medium → Qwen3.5-4B
@@ -1095,14 +1337,10 @@ OCR Block
 
 #### 5.3.4 数学模型路由
 
-输入 difficulty classifier 的题目来自正式 `Question.content`。
+数学模型路由不再调用 difficulty classifier。进入学生批改 Workflow 前，`Question.difficulty` 已经在作业创建阶段确定。
 
 ```text
-Question.content
-      ↓
-Qwen3.5-4B
-      ↓
-difficulty
+Question.difficulty
 ├── easy
 ├── medium
 └── hard
@@ -1119,6 +1357,8 @@ hard
 ```
 
 两个正式批改模型使用相同的数学批改 Prompt 规则、Taxonomy Contract 和输出 Contract，只替换模型。
+
+如果数学 `Question.difficulty` 缺失，说明发布前业务校验没有通过，不应在学生批改阶段临时重新识别，而应作为 Question 数据异常处理。
 
 #### 5.3.5 数学步骤评分 Prompt
 
@@ -1318,7 +1558,7 @@ height = (y2 - y1) * scale_y
 
 英语作文采用 **AutoSCORE 风格的两阶段 Workflow**，两个阶段均固定使用 `DeepSeek v4 Flash`。
 
-英语作文当前**不经过 `Qwen3.5-4B` difficulty classification，也不进行 easy / medium / hard 模型路由**。
+英语作文当前不进行 easy / medium / hard 模型路由。
 
 参考思路：
 
@@ -1502,7 +1742,6 @@ Progress Event
 
 ```text
 OCR 结构化识别
-难度识别
 模型路由
 数学步骤识别 / 英语证据提取
 正式评分
@@ -1537,8 +1776,8 @@ Teacher
 Class
    ↓
 Homework
-   ↓
-Question
+├── status = DRAFT / PUBLISHED
+└── Question ← QuestionBankItem（复制来源）
    ↓
 Student Submission（当前提交）
 ├── image_url
@@ -1547,7 +1786,7 @@ Student Submission（当前提交）
    ↓
 后台异步 Grading Workflow
    ├── OCR → OCRResult
-   ├── Math：OCR Block 拼装 → Qwen3.5-4B 难度识别 → 模型路由 → Taxonomy Prompt → 动态步骤评分 → TaxonomyValidator
+   ├── Math：OCR Block 拼装 → 读取 Question.difficulty → 模型路由 → Taxonomy Prompt → 动态步骤评分 → TaxonomyValidator
    └── English：DeepSeek v4 Flash Evidence Extraction → DeepSeek v4 Flash Scoring + Taxonomy Diagnosis → TaxonomyValidator
    ↓
 当前有效 GradingResult
@@ -1589,15 +1828,17 @@ GradingResultMessage
 
 其中：
 
-- `Teacher / Student / Class / Homework / Question` 定义业务上下文。
+- `Teacher / Student / Class / Homework / Question` 定义业务上下文；`Homework` 先以 `DRAFT` 创建，发布后进入 `PUBLISHED`。
+- `QuestionBankItem` 是可复用题库资源；加入 Homework 时复制为独立 `Question`，已存在 Question 不受题库后续修改影响。
+- 教师自行创建数学 Question 时由 `Qwen3.5-4B` 预判 difficulty 并允许教师发布前修正；题库题直接复制已有 difficulty。
 - `Submission` 表示学生对某一道题当前有效的真实答案，同时保存当前批改 `status / current_stage`；同一 `student_id + question_id` 只保留一条。
 - `PENDING / RUNNING` 时拒绝重复提交；`SUCCEEDED / FAILED` 后复用同一 Submission 重新提交。
-- `OCRResult` 持久化 OCR 的核心结构化识别证据；数学批改使用 `layout_details` 的 Block 顺序、内容和坐标。
+- `OCRResult` 持久化学生 Submission 的 OCR 核心结构化识别证据；数学批改使用 `layout_details` 的 Block 顺序、内容和坐标。
 - `Grading Workflow` 负责 OCR、结构化解析、确定性题型路由，以及数学或英语作文的具体批改过程。
-- 数学题由 `Qwen3.5-4B` 识别 `easy / medium / hard`；easy / medium 使用 `Qwen3.5-4B`，hard 使用 `DeepSeek v4 Flash`。
+- 数学批改直接读取 `Question.difficulty`：easy / medium 使用 `Qwen3.5-4B`，hard 使用 `DeepSeek v4 Flash`，学生批改阶段不重新进行 difficulty classification。
 - 数学步骤由正式批改模型根据学生实际解法动态识别和评分，`error_block_ids` 与 OCR `bbox2d` 共同支持原图 Block 级错误定位。
 - 英语作文固定使用 `DeepSeek v4 Flash` 完成“证据提取 → 正式评分与结构化诊断”两阶段 Workflow，不进行 difficulty 模型路由。
 - Knowledge Point / Error Type 使用系统维护的两级 Taxonomy；模型选择标准 `level = 2` `key / code` 并保留 `raw_name / raw_type`，后端 Validator 只负责合法性校验。
 - `GradingResult` 是当前 Submission 成功完成 Workflow 后对外输出的唯一最终批改结果。
-- `MySQL` 保存业务事实、OCR 证据和 Taxonomy 标准参考字典，为后续学生画像、班级学情分析和 Teacher Agent 提供可信数据基础。
+- `MySQL` 保存业务事实、OCR 证据、Taxonomy 标准参考字典和题库资源，为后续学生画像、班级学情分析和 Teacher Agent 提供可信数据基础。
 - 学生实时进度继续展示在 DeerFlow Chat 中：复用聊天容器、Message Timeline、ChainOfThought 类步骤 UI 和 Streaming 基础能力；`grading.*` 业务事件不伪装成 `AIMessage / reasoning / tool_calls`。
