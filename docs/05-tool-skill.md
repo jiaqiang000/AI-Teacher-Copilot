@@ -55,24 +55,71 @@ Skill
 = 规定如何组合多个 Tool、如何分析结果、如何生成最终输出
 ```
 
-简单问题可以直接调用单个 Tool：
+简单问题可以直接调用单个 Tool，但在正式 Tool Calling 前需要先把教师自然语言中的业务对象解析为明确 ID：
 
 ```text
 “张三有哪些薄弱知识点？”
+→ 解析“张三”对应的 student_id
 → get_student_profile
 
 “这次作业完成率多少？”
+→ 从当前业务 Context 获取 homework_id
 → get_homework_analysis
 
 “第 8 题错误率多少？”
+→ 根据当前 Homework 中的 question_no = 8 确定 question_id
 → get_question_analysis
 
 “八三班现在有哪些学生？”
+→ 解析“八三班”对应的 class_id
 → list_class_students
 
 “八三班这周有哪些数学作业？”
+→ 解析“八三班”对应的 class_id
 → list_class_homeworks
 ```
+
+### 1.1 业务对象解析与 Tool Calling
+
+教师使用自然语言描述业务对象，而正式业务 Tool 使用明确业务 ID。因此 Tool Calling 之前存在一层轻量的 Business Object Resolution（业务对象解析）：
+
+```text
+Teacher Query（教师请求）
+        ↓
+Teacher Business Context（教师业务上下文）
+        ↓
+必要时使用对象发现 Tool
+        ↓
+能否唯一确定业务对象？
+├── Yes → 获得业务 ID → 调用正式 Tool / Skill
+└── No  → DeerFlow ask_clarification
+             ↓
+           教师确认
+             ↓
+           获得业务 ID
+             ↓
+           继续执行
+```
+
+对象解析固定遵循四条原则：
+
+```text
+Context First（上下文优先）
+Unique Match First（唯一匹配直接继续）
+Clarify on Ambiguity（存在歧义才询问）
+Never Guess ID（禁止猜测业务 ID）
+```
+
+其中：
+
+- 当前页面或会话 Context 已经提供 `class_id / homework_id / question_id` 时直接使用，不重复查询。
+- 需要发现班级中的学生时复用 `list_class_students`。
+- 需要发现班级中的作业时复用 `list_class_homeworks`。
+- “第 8 题”通过当前 `homework_id + question_no = 8` 映射到真实 `question_id`。
+- 存在多个候选或无法唯一确定时，直接复用 DeerFlow 内置 `ask_clarification` Human-in-the-Loop 能力让教师确认。
+- Teacher Agent 不得根据姓名、题号等自然语言自行猜测 `student_id / class_id / homework_id / question_id`。
+
+本项目不新增 Entity Resolution Tool（实体解析工具）、Entity Resolution Skill（实体解析技能）或 Entity Resolution Agent（实体解析智能体）。`ask_clarification` 属于 DeerFlow Harness 的内置能力，不计入 AI Teacher Copilot 的 9 个业务 Tool，因此当前 Tool 数量不发生变化。
 
 复杂教学任务通过 Skill 组织多个 Tool：
 
@@ -1010,7 +1057,7 @@ MySQL → 即时聚合
 completion（完成情况）
 performance（成绩表现）
 knowledge_points（知识点表现）
-questions（题目表现）
+questions（题目表现，包含 question_id + question_no）
 attention_students（重点关注学生）
 ```
 
@@ -1036,6 +1083,7 @@ MySQL → 即时聚合
 主要返回：
 
 ```text
+question_no（题号）
 attempt_count（作答人数）
 avg_score_rate（平均得分率）
 error_rate（错误率）
