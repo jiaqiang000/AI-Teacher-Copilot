@@ -296,6 +296,8 @@ incorrect（错误）
 
 后续班级统计应该优先统计 `code（错误编码）`，而不是统计自然语言 `description（错误描述）`。
 
+数学步骤上的原图定位信息不重复塞进公共 `diagnosis.errors[]`。真正需要定位的 OCR Block 由 `math_detail.steps[].error_block_ids` 保存，再通过对应 `OCRResult.layout_details` 回查 `bbox2d`。
+
 ---
 
 ## 7. Feedback（当前题即时反馈）
@@ -345,17 +347,21 @@ Student Profile
 
 # 8. 数学扩展字段
 
-数学题需要额外表达最终答案和过程分。
+数学题需要额外保存模型从学生实际作答中识别出的关键步骤、步骤得分和 OCR Block 证据。
 
 ```text
 math_detail（数学详情）
 ├── correct（最终答案是否正确）
-├── final_answer（学生最终答案）
-├── reference_answer（参考答案）
-└── process（解题过程信息）
-    ├── score（过程得分）
-    ├── max_score（过程满分）
-    └── analysis（过程分析）
+├── final_answer（模型从学生作答中识别出的最终答案）
+└── steps[]（关键解题步骤）
+    ├── step_index（步骤序号）
+    ├── description（步骤说明）
+    ├── evidence_block_ids[]（该步骤对应的 OCR Block）
+    ├── error_block_ids[]（该步骤中需要在原图标记的错误 Block）
+    ├── status（步骤状态）
+    ├── earned_score（步骤实际得分）
+    ├── max_score（步骤满分）
+    └── feedback（步骤反馈）
 ```
 
 推荐：
@@ -365,33 +371,126 @@ math_detail（数学详情）
   "math_detail": {
     "correct": false,
     "final_answer": "x = 3",
-    "reference_answer": "x = 2",
-    "process": {
-      "score": 6,
-      "max_score": 8,
-      "analysis": "列式正确，移项步骤出现符号错误，后续计算基于错误结果继续。"
-    }
+    "steps": [
+      {
+        "step_index": 1,
+        "description": "正确建立一元一次方程",
+        "evidence_block_ids": [2, 3],
+        "error_block_ids": [],
+        "status": "correct",
+        "earned_score": 3,
+        "max_score": 3,
+        "feedback": "列式正确。"
+      },
+      {
+        "step_index": 2,
+        "description": "进行移项并化简",
+        "evidence_block_ids": [4, 5],
+        "error_block_ids": [5],
+        "status": "incorrect",
+        "earned_score": 1,
+        "max_score": 4,
+        "feedback": "移项后符号处理错误。"
+      },
+      {
+        "step_index": 3,
+        "description": "根据前一步结果继续求解",
+        "evidence_block_ids": [6, 7],
+        "error_block_ids": [],
+        "status": "consequential_error",
+        "earned_score": 2,
+        "max_score": 3,
+        "feedback": "结果受前一步错误影响，但当前除法操作本身合理。"
+      }
+    ]
   }
 }
 ```
 
-### 为什么保留 process（解题过程信息）？
+### 8.1 Step status（步骤状态）
 
-赛题要求不仅判断最终答案，还要支持过程分。
-
-因此不能只有：
+固定为：
 
 ```text
-correct（最终答案是否正确） = false
+correct
+= 当前步骤正确
+
+partial
+= 思路或推导部分正确，但存在遗漏或局部错误
+
+incorrect
+= 当前步骤本身存在数学错误
+
+consequential_error
+= 当前步骤受到前序错误结果影响，但当前数学操作或推理方式本身合理
 ```
 
-还需要知道：
+`consequential_error` 用于避免“前一步错了，后续全部判零分”的简单错误传播逻辑。
+
+### 8.2 Block 字段职责
 
 ```text
-学生过程是否合理
-错误发生在哪一步
-过程应该得到多少分
+evidence_block_ids
+→ 模型判断这一关键步骤时使用的 OCR Block
+
+error_block_ids
+→ 这一关键步骤中真正存在错误、需要前端在原图框选的 OCR Block
 ```
+
+正确步骤通常：
+
+```json
+{
+  "error_block_ids": []
+}
+```
+
+`error_block_ids` 不直接保存坐标。坐标仍属于 OCR 证据层：
+
+```text
+math_detail.steps[].error_block_ids
+        ↓
+OCRResult.layout_details[index]
+        ↓
+bbox2d + width + height
+        ↓
+前端原图红色矩形框
+```
+
+这样避免在 `GradingResult` 里复制 OCR 坐标数据。
+
+### 8.3 数学步骤分约束
+
+数学结果必须满足：
+
+```text
+Σ math_detail.steps[].max_score
+=
+score.max
+
+Σ math_detail.steps[].earned_score
+=
+score.earned
+
+0 <= step.earned_score <= step.max_score
+```
+
+同时：
+
+```text
+每个 evidence_block_id
+必须存在于当前 OCRResult.layout_details
+
+每个 error_block_id
+必须存在于当前 OCRResult.layout_details
+
+同一步骤中的 error_block_ids
+应属于该步骤 evidence_block_ids 所覆盖的 OCR 内容
+```
+
+因此总分只在顶层 `score` 保存一份；总体评价只在顶层 `feedback` 保存一份；错误类型只在顶层 `diagnosis.errors` 保存一份。
+
+`math_detail` 只承担数学特有的逐步骤过程数据，避免重复字段。
 
 ---
 
@@ -562,9 +661,9 @@ execution_meta（执行元数据）
   "difficulty": "easy",
 
   "score": {
-    "earned": 8,
+    "earned": 6,
     "max": 10,
-    "rate": 0.8
+    "rate": 0.6
   },
 
   "diagnosis": {
@@ -573,7 +672,7 @@ execution_meta（执行元数据）
         "key": "math.linear_equation",
         "name": "一元一次方程",
         "performance": "partial",
-        "evidence": "能够正确建立方程"
+        "evidence": "能够正确建立方程，但后续移项出现错误"
       },
       {
         "key": "math.linear_equation.transposition",
@@ -594,9 +693,10 @@ execution_meta（执行元数据）
   },
 
   "feedback": {
-    "summary": "解题整体思路正确，但移项时出现符号错误。",
+    "summary": "解题整体思路正确，但移项时出现符号错误，后续结果受到该错误影响。",
     "strengths": [
-      "能够正确建立方程"
+      "能够正确建立一元一次方程",
+      "后续仍能按照已有结果继续进行合理运算"
     ],
     "improvements": [
       "重点检查移项后的正负号变化"
@@ -606,12 +706,38 @@ execution_meta（执行元数据）
   "math_detail": {
     "correct": false,
     "final_answer": "x = 3",
-    "reference_answer": "x = 2",
-    "process": {
-      "score": 6,
-      "max_score": 8,
-      "analysis": "列式正确，移项步骤发生符号错误。"
-    }
+    "steps": [
+      {
+        "step_index": 1,
+        "description": "正确建立一元一次方程",
+        "evidence_block_ids": [2, 3],
+        "error_block_ids": [],
+        "status": "correct",
+        "earned_score": 3,
+        "max_score": 3,
+        "feedback": "列式正确。"
+      },
+      {
+        "step_index": 2,
+        "description": "进行移项并化简",
+        "evidence_block_ids": [4, 5],
+        "error_block_ids": [5],
+        "status": "incorrect",
+        "earned_score": 1,
+        "max_score": 4,
+        "feedback": "移项后符号处理错误。"
+      },
+      {
+        "step_index": 3,
+        "description": "根据前一步结果继续求解",
+        "evidence_block_ids": [6, 7],
+        "error_block_ids": [],
+        "status": "consequential_error",
+        "earned_score": 2,
+        "max_score": 3,
+        "feedback": "结果受到前一步影响，但当前运算方式本身合理。"
+      }
+    ]
   },
 
   "english_essay_detail": null,
@@ -626,6 +752,15 @@ execution_meta（执行元数据）
   "created_at": "2026-08-21T17:30:00+08:00"
 }
 ```
+
+这个示例中：
+
+```text
+score.earned = 3 + 1 + 2 = 6
+score.max    = 3 + 4 + 3 = 10
+```
+
+`Block 5` 可以通过当前 `OCRResult.layout_details` 找到对应 `bbox2d`，用于学生前端在原始作业图片上绘制红色错误框。
 
 ---
 
@@ -752,7 +887,7 @@ question_type（题型）
 difficulty（数学难度；英语当前为空）
 ```
 
-主要用于展示或追溯，不直接作为长期画像核心统计值：
+主要用于展示、过程解释或追溯，不直接作为长期画像核心统计值：
 
 ```text
 feedback.summary（总体评价）
@@ -760,10 +895,18 @@ feedback.strengths（做得好的地方）
 feedback.improvements（需要改进的地方）
 
 diagnosis.*.evidence（诊断证据）
-math_detail.process.analysis（数学过程分析）
+
+math_detail.final_answer（数学最终答案）
+math_detail.steps[].description（步骤说明）
+math_detail.steps[].evidence_block_ids（步骤 OCR 证据）
+math_detail.steps[].error_block_ids（错误定位 Block）
+math_detail.steps[].feedback（步骤反馈）
+
 english_essay_detail.evidence（英语作文评分证据）
 ```
 
+数学步骤中的 `status / earned_score / max_score` 主要用于当前题步骤评分、学生展示和批改追溯；长期画像仍优先使用统一的 `score.rate`、知识点表现和标准错误编码，避免画像过度依赖某一道题的动态步骤划分。
+
 也就是说：
 
-> **长期画像尽量建立在结构化、可统计的信号上；自然语言文本主要用于解释和展示。**
+> **长期画像尽量建立在结构化、可统计的稳定信号上；步骤文本、OCR Block 和自然语言反馈主要用于当前批改解释、原图定位与追溯。**
