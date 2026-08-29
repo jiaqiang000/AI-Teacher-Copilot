@@ -50,7 +50,7 @@ Question
 Submission ← Student
    │
    ↓
-GradingTask
+Grading Workflow
    │
    ↓
 GradingResult
@@ -65,11 +65,10 @@ GradingResult
 | `Class` | 班级 |
 | `Homework` | 一次作业 |
 | `Question` | 作业中的一道题 |
-| `Submission` | 一个学生对一道题当前有效的提交 |
-| `GradingTask` | 一次提交版本对应的异步批改任务 |
-| `GradingResult` | 当前有效提交经过完整 Workflow 后的最终批改结果 |
+| `Submission` | 一个学生对一道题当前有效的答案，同时保存当前批改状态和执行阶段 |
+| `GradingResult` | 当前 Submission 成功完成完整 Workflow 后的最终批改结果 |
 
-其中最关键的是 `Question`、`Submission`、`GradingTask` 和 `GradingResult`。
+其中最关键的是 `Question`、`Submission` 和 `GradingResult`。
 
 知识点不作为教师必须维护的前置业务对象。当前 MVP 中，知识点由批改模型自动识别，并作为 `GradingResult` 中的结构化诊断结果沉淀；后续如果引入统一知识点体系，再增加知识点标准化与映射层。
 
@@ -196,9 +195,9 @@ question_no = 8
 
 ### 3.3 Submission
 
-`Submission` 只表示：
+`Submission` 表示：
 
-> 学生针对一道题当前提交了什么。
+> **学生针对一道题当前有效的答案，同时也是这份当前答案的批改状态记录。**
 
 例如小明做 q001：
 
@@ -213,7 +212,28 @@ Question q001
 Submission sub_10001
 ```
 
-Submission 大概表达：
+第一版逻辑结构固定为：
+
+```text
+Submission
+├── submission_id
+├── student_id
+├── question_id
+├── homework_id
+├── image_url
+│
+├── status
+├── current_stage
+├── error_code
+├── error_message
+│
+├── submitted_at
+├── started_at
+├── finished_at
+└── updated_at
+```
+
+示例：
 
 ```json
 {
@@ -222,12 +242,18 @@ Submission 大概表达：
   "question_id": "q001",
   "homework_id": "hw_001",
   "image_url": "...",
-  "version": 1,
-  "submitted_at": "..."
+  "status": "RUNNING",
+  "current_stage": "GRADING",
+  "error_code": null,
+  "error_message": null,
+  "submitted_at": "...",
+  "started_at": "...",
+  "finished_at": null,
+  "updated_at": "..."
 }
 ```
 
-这里**没有分数、没有知识点分析、没有评语**，因为 `Submission` 只代表学生提交行为。
+这里仍然**没有分数、知识点分析或评语**；这些属于 `GradingResult`。`Submission` 只负责当前答案和当前批改生命周期。
 
 当前参赛项目采用简化的重新提交规则：
 
@@ -236,56 +262,46 @@ Submission 大概表达：
 只保留一个当前 Submission
 ```
 
-第一次提交：
+数据库层增加唯一约束：
 
 ```text
-image = A
-version = 1
+UNIQUE(student_id, question_id)
 ```
 
-学生修改答案后重新提交：
+业务规则固定为：
 
 ```text
-UPDATE 原 Submission
-image = B
-version = 2
+不存在 Submission
+→ 创建 Submission
+→ status = PENDING
+→ current_stage = QUEUED
+
+已存在，且 status = PENDING / RUNNING
+→ 拒绝再次提交
+→ HTTP 409
+→ code = SUBMISSION_GRADING_IN_PROGRESS
+
+已存在，且 status = SUCCEEDED / FAILED
+→ 复用原 submission_id
+→ 替换 image_url
+→ 删除旧 OCRResult / GradingResult
+→ 清空错误与完成时间
+→ status = PENDING
+→ current_stage = QUEUED
+→ 重新执行完整 Workflow
 ```
 
-不额外保留 `Submission A / Submission B / Submission C` 这样的完整业务历史。重新提交后的当前版本直接覆盖旧版本，并以当前版本重新批改。
-
-`version` 必须保留，用于防止旧异步任务晚于新任务完成时覆盖最新结果。每次重新提交：
+第一版不保存 `Submission A / Submission B / Submission C` 这样的历史版本，也不使用：
 
 ```text
-Submission.version += 1
+Submission.version
+submission_version
+GradingTask
+Idempotency Key
+旧任务 / 新任务版本竞争
 ```
 
-### 3.4 GradingTask
-
-`GradingTask（批改任务）` 是工程层对象，用于承载一次 `Submission.version` 对应的批改执行过程。
-
-它主要解决：
-
-```text
-后台异步执行
-+
-实时批改进度
-+
-失败状态与重试信息
-+
-页面刷新后的状态恢复
-+
-重新提交后的版本保护
-```
-
-它不改变业务层的核心关系：
-
-```text
-当前有效 Submission
-        ↓
-完整 Grading Workflow
-        ↓
-当前有效 GradingResult
-```
+原因是同一学生同一道题在 `PENDING / RUNNING` 时不允许再次提交，因此任意时刻最多只有一个运行中的批改 Workflow。
 
 ---
 
@@ -320,19 +336,23 @@ Submission.version += 1
                            ↓
                      上传单题图片
                            ↓
-                 创建 / 更新 Submission
+             POST /api/questions/{question_id}/submission
                            ↓
-                    创建 GradingTask
+                 创建 / 重置 Submission
                            ↓
-                HTTP 立即返回 task_id
+              HTTP 立即返回 submission_id
                            ↓
-                前端订阅实时批改进度
+         DeerFlow Chat 创建 GradingProgressMessage
+                           ↓
+          订阅 /api/submissions/{submission_id}/events
 
 =================================================
 
                   Grading Workflow
                            │
                     后台异步开始执行
+                           ↓
+          Submission = RUNNING / OCR
                            ↓
                           OCR
                            ↓
@@ -353,9 +373,9 @@ Submission.version += 1
                            ↓
                   组装 GradingResult
                            ↓
-              校验 submission_version
-                           ↓
                   写入当前有效结果
+                           ↓
+       Submission = SUCCEEDED / COMPLETED
                            ↓
                          MySQL
 ```
@@ -369,22 +389,27 @@ Submission.version += 1
 - 英语作文不进行 difficulty 模型路由，固定使用 `DeepSeek v4 Flash` 完成两阶段 Workflow。
 - `knowledge_points` 不要求教师逐题标注，由批改模型根据题目、学生作答和批改过程自动识别，并进入最终 `GradingResult`。
 - `OCRResult` 保存 OCR 对学生原图的结构化识别证据，为数学步骤评分、错误追溯和原图错误定位提供依据。
-- `GradingTask` 用于工程层追踪任务状态、异步执行、失败记录、页面恢复和提交版本保护，它不改变业务层的 `Submission → GradingResult` 关系。
+- `Submission.status / current_stage` 是当前批改状态事实源；SSE / Streaming Event 只负责把状态变化实时推送给前端。
+- 用户上传后仍在 DeerFlow Chat 中实时看到 OCR、解析、难度判断、批改、结果组装等过程；本次简化只删除独立任务和版本竞争设计，不削减前端过程可视化能力。
 
 ---
 
 ## 5. Grading Workflow 设计
 
-一次当前有效 `Submission.version` 对应一个 `GradingTask`，并进入一次完整批改 Workflow。Workflow 内部可以包含 OCR、模型路由、多个模型调用或 Agent 步骤，但这些都属于内部实现。
+一个当前 `Submission` 被接受提交后启动一次完整 Grading Workflow。Workflow 内部可以包含 OCR、模型路由、多个模型调用或 Agent 步骤，但批改状态和阶段直接持久化到 `Submission`，不再创建独立批改任务对象。
 
 ### 5.1 通用前置流程
 
 ```text
 Submission
     ↓
-创建 GradingTask
+status = PENDING
+current_stage = QUEUED
     ↓
-后台异步执行
+启动后台异步 Workflow
+    ↓
+status = RUNNING
+current_stage = OCR
     ↓
 OCR
     ↓
@@ -412,7 +437,7 @@ question_type
 
 因此这一层采用确定性路由。
 
-### 5.2 GradingTask 状态机与异步执行
+### 5.2 Submission 驱动的异步批改与实时进度
 
 #### 5.2.1 用户实时等待，不等于后端同步阻塞
 
@@ -423,9 +448,13 @@ question_type
 ↓
 ✓ 图片上传完成
 ↓
-✓ OCR 识别完成
+● OCR 识别中
 ↓
-● 正在解析 / 判断难度 / 批改
+○ 作答解析
+↓
+○ 难度判断（仅数学）
+↓
+○ 批改
 ↓
 ○ 生成批改结果
 ↓
@@ -437,26 +466,38 @@ question_type
 当前 MVP 采用：
 
 ```text
-POST Submission
+POST /api/questions/{question_id}/submission
         ↓
-创建 / 更新 Submission
+创建 / 重置 Submission
         ↓
-创建 GradingTask
+立即返回 submission_id
         ↓
-立即返回 task_id
+asyncio.create_task(
+    run_grading_workflow(submission_id)
+)
         ↓
 后台异步执行 Grading Workflow
 ```
 
-前端拿到 `task_id` 后立即订阅该任务的实时进度，因此：
+示例响应：
 
-> **用户体验上是实时等待；后端执行上是异步任务。**
+```json
+{
+  "submission_id": "sub_10001",
+  "status": "PENDING",
+  "current_stage": "QUEUED"
+}
+```
 
-第一版不引入 Kafka、RabbitMQ、Celery 等复杂任务队列。实现可以使用轻量后台异步任务，例如应用进程内 `asyncio` 后台协程。以后如果需要更高并发或独立 Worker，只替换任务执行器，不改变 `GradingTask` 的业务契约。
+前端拿到 `submission_id` 后立即创建聊天框内的批改进度消息，并订阅该 Submission 的实时事件，因此：
 
-#### 5.2.2 GradingTask 状态
+> **用户体验上是实时等待；后端执行上是轻量异步 Workflow。**
 
-整个任务状态只保留 4 个：
+第一版不引入 Kafka、RabbitMQ、Celery 等复杂任务队列。以后如果需要更高并发或独立 Worker，可以替换任务执行器，但 `Submission + grading.* Event` 的业务契约不变。
+
+#### 5.2.2 Submission 批改状态
+
+整个当前批改生命周期只保留 4 个状态：
 
 ```text
 PENDING
@@ -468,14 +509,14 @@ FAILED
 状态机：
 
 ```text
-创建任务
+提交被接受
 ↓
 PENDING
 ↓
-后台任务正式开始
+后台 Workflow 正式开始
 ↓
 RUNNING
-├── 成功生成并写入当前有效 GradingResult
+├── 成功写入当前 GradingResult
 │      ↓
 │   SUCCEEDED
 │
@@ -486,14 +527,14 @@ RUNNING
 
 含义：
 
-- `PENDING`：任务已创建，但批改逻辑尚未正式开始，通常持续时间很短。
+- `PENDING`：Submission 已创建或重置，但批改逻辑尚未正式开始，通常持续时间很短。
 - `RUNNING`：正在执行 OCR、解析、模型路由或批改。
-- `SUCCEEDED`：当前提交版本对应的 `GradingResult` 已成功写入。
-- `FAILED`：任务执行失败，保存错误信息供前端展示和工程排查。
+- `SUCCEEDED`：当前 Submission 对应的 `GradingResult` 已成功写入。
+- `FAILED`：当前批改执行失败，保存错误信息供前端展示和工程排查。
 
 #### 5.2.3 status 与 current_stage 分开
 
-`status` 表示整个任务生命周期状态；`current_stage` 表示任务在 `RUNNING` 时具体执行到哪里。
+`status` 表示当前 Submission 的整个批改生命周期；`current_stage` 表示 `RUNNING` 时具体执行到哪里。
 
 第一版 `current_stage`：
 
@@ -507,7 +548,7 @@ ASSEMBLING_RESULT
 COMPLETED
 ```
 
-数学任务正常阶段：
+数学正常阶段：
 
 ```text
 QUEUED
@@ -543,106 +584,157 @@ COMPLETED
 
 英语作文**不得进入** `DIFFICULTY_CLASSIFICATION`。
 
-#### 5.2.4 GradingTask 逻辑字段
+#### 5.2.4 Submission 批改字段与数据约束
 
-第一版逻辑结构：
+`Submission` 中与批改生命周期直接相关的逻辑字段固定为：
 
 ```text
-GradingTask
-├── grading_task_id
-├── submission_id
-├── submission_version
-├── status
-├── current_stage
-├── retry_count
-├── error_code
-├── error_message
-├── created_at
-├── started_at
-└── finished_at
+status
+current_stage
+error_code
+error_message
+submitted_at
+started_at
+finished_at
+updated_at
 ```
 
-这里先固定逻辑字段，不在本文件决定 SQL 类型、索引长度等数据库实现细节。
+数据库约束：
+
+```text
+UNIQUE(student_id, question_id)
+```
+
+不再建立：
+
+```text
+grading_task_id
+submission_version
+retry_count
+```
+
+也不单独建立 `grading_task` 表。
 
 #### 5.2.5 页面刷新后的状态恢复
 
-实时 Streaming 不是任务事实源。
+实时 Streaming 不是状态事实源。
 
 如果学生在批改过程中刷新页面：
 
-```text
-GET /grading-tasks/{task_id}
+```http
+GET /api/submissions/{submission_id}
 ```
 
-前端应先读取当前持久化状态，例如：
+前端先读取当前持久化状态，例如：
 
 ```json
 {
+  "submission_id": "sub_10001",
   "status": "RUNNING",
-  "current_stage": "GRADING"
+  "current_stage": "GRADING",
+  "error_code": null,
+  "error_message": null
 }
 ```
 
-然后恢复对应进度 UI，并重新订阅实时事件。
+前端根据 `subject + current_stage` 重建已完成 / active / pending 步骤，然后重新订阅：
+
+```http
+GET /api/submissions/{submission_id}/events
+```
 
 因此：
 
 ```text
-GradingTask 持久化状态
-= 当前任务真实状态 / 页面恢复依据
+Submission.status / current_stage
+= 当前批改真实状态 / 页面恢复依据
 
 SSE / Streaming Event
 = 实时增量体验
 ```
 
-二者互补，不互相替代。
+刷新页面不得把进度重新显示为 `QUEUED`，也不得重新启动一次 Workflow。
 
-#### 5.2.6 重新提交版本保护
+#### 5.2.6 重复提交与重新提交规则
 
-每个 `GradingTask` 创建时记录当时的：
+这是删除提交版本机制后的核心业务约束。
 
-```text
-submission_version
-```
-
-例如：
+如果当前状态为：
 
 ```text
-学生上传 A
-Submission.version = 1
-Task A.submission_version = 1
-
-随后重新上传 B
-Submission.version = 2
-Task B.submission_version = 2
+PENDING
+或
+RUNNING
 ```
 
-异步场景下 Task A 可能晚于 Task B 完成。因此任何任务写入最终 `GradingResult` 前，必须检查：
+学生再次提交时后端直接拒绝：
 
 ```text
-GradingTask.submission_version
-==
-Submission.version
+HTTP 409 Conflict
 ```
 
-只有相等才允许写入当前结果。
+返回：
 
-如果：
+```json
+{
+  "code": "SUBMISSION_GRADING_IN_PROGRESS",
+  "message": "该题正在批改中，请等待批改完成后再重新提交。",
+  "submission_id": "sub_10001"
+}
+```
+
+前端不创建新 Submission、不启动新 Workflow，继续显示并订阅当前 `submission_id` 的批改过程。
+
+如果当前状态为：
 
 ```text
-Task A.submission_version = 1
-Submission.version = 2
+SUCCEEDED
+或
+FAILED
 ```
 
-则 Task A 已经过期，其结果不得覆盖当前提交对应的结果。
+允许重新提交，但复用同一条 Submission：
 
-这个约束是系统 invariant（不变量）：
+```text
+submission_id      保持不变
+image_url          替换为新图片
+status             → PENDING
+current_stage      → QUEUED
+error_code         → null
+error_message      → null
+started_at         → null
+finished_at        → null
+submitted_at       → now
+updated_at         → now
+```
 
-> **旧提交版本对应的异步任务，无论何时完成，都不能覆盖新提交版本的 GradingResult。**
+同时清除当前旧结果：
+
+```text
+DELETE current OCRResult
+DELETE current GradingResult
+```
+
+然后重新启动：
+
+```python
+asyncio.create_task(
+    run_grading_workflow(submission_id)
+)
+```
+
+第一版不保存旧答案和旧批改历史。
+
+由于 `PENDING / RUNNING` 时禁止再次提交，同一学生同一道题任意时刻最多只有一个运行中的 Workflow，因此不存在“旧 Workflow 与新 Workflow 同时完成后竞争写结果”的场景，也不需要 `Submission.version / submission_version`。
 
 #### 5.2.7 实时批改进度事件
 
-后台 Workflow 在阶段变化时发送结构化进度事件。
+后台 Workflow 在阶段变化时必须完成两件事：
+
+```text
+1. 更新 Submission.status / current_stage
+2. 发送 grading.* SSE / Streaming Event
+```
 
 第一版事件：
 
@@ -653,12 +745,12 @@ grading.stage.failed
 grading.completed
 ```
 
-例如：
+阶段开始：
 
 ```json
 {
   "type": "grading.stage.started",
-  "task_id": "gt_001",
+  "submission_id": "sub_10001",
   "stage": "OCR",
   "label": "正在识别手写答案"
 }
@@ -669,55 +761,126 @@ OCR 完成：
 ```json
 {
   "type": "grading.stage.completed",
-  "task_id": "gt_001",
+  "submission_id": "sub_10001",
   "stage": "OCR",
   "label": "手写答案识别完成"
 }
 ```
 
+失败：
+
+```json
+{
+  "type": "grading.stage.failed",
+  "submission_id": "sub_10001",
+  "stage": "GRADING",
+  "error_code": "GRADING_MODEL_FAILED",
+  "message": "批改失败，请重新提交。"
+}
+```
+
+全部完成：
+
+```json
+{
+  "type": "grading.completed",
+  "submission_id": "sub_10001",
+  "stage": "COMPLETED"
+}
+```
+
 这些事件通过 SSE / Streaming 推送给学生前端，前端按事件更新 `complete / active / pending` 三类步骤状态。
 
-#### 5.2.8 DeerFlow 前端与 Streaming 复用边界
+#### 5.2.8 DeerFlow Chat 与 Streaming 复用边界
 
-学生批改页面不直接复用 DeerFlow 聊天消息模型。
+学生端继续复用 DeerFlow Chat 作为主要交互容器，而不是另外做一个脱离聊天上下文的进度页面。
 
-当前复用策略：
+学生提交后的消息时间线固定为：
 
 ```text
-复用：
-DeerFlow ChainOfThought UI primitives
+Student Image Message
+        ↓
+GradingProgressMessage
+        ↓
+GradingResultMessage
+```
+
+前端复用：
+
+```text
+DeerFlow Chat 页面 / Message Timeline
 +
-已有 Streaming / SSE 基础设施与 custom event 思路
-
-不复用：
-MessageGroup 的 AIMessage / reasoning / tool_calls 转换逻辑
+ChainOfThought 类步骤 UI primitives
++
+已有 Streaming / SSE 基础设施
 ```
 
-原因是 OCR、难度判断、批改等阶段本身就是明确的业务步骤，没有必要伪装成聊天 Tool Call。
-
-学生前端单独实现：
+前端新增一层很薄的批改适配：
 
 ```text
-GradingProgress
+GradingProgressAdapter / useGradingStream
+= 订阅 grading.* Event
+= 读取 / 恢复 Submission.status + current_stage
+= 转换为 complete / active / pending
+
+GradingProgressMessage
+= 位于 DeerFlow Chat 消息时间线中
+= 内部复用 ChainOfThought 类步骤组件展示批改阶段
+
+GradingResultMessage
+= grading.completed 后
+= 在同一聊天上下文中展示最终 GradingResult
 ```
 
-内部复用 DeerFlow 的步骤 UI primitives，用于展示：
+示例 UI：
+
+```text
+学生：
+[上传的答案图片]
+
+AI Teacher：
+正在批改你的答案
+
+✓ 图片上传完成
+✓ OCR 识别完成
+● 正在解析学生作答
+○ 正在判断题目难度
+○ 正在批改
+○ 正在生成批改结果
+```
+
+后续随着事件到达更新为：
 
 ```text
 ✓ 图片上传完成
-│
-✓ 手写内容识别完成
-│
-✓ 解题内容解析完成
-│
-● 正在分析题目难度
-│
-○ 等待模型批改
-│
-○ 生成批改结果
+✓ OCR 识别完成
+✓ 作答解析完成
+✓ 难度判断完成
+● 正在批改
+○ 正在生成批改结果
 ```
 
-如果批改 Workflow 接入 DeerFlow / LangGraph，则优先通过自定义 Stream Event 推送 `grading.*` 事件；如果后续批改 Workflow 不依赖 DeerFlow，也保持同一事件协议，由自己的 SSE endpoint 推送即可。
+最终：
+
+```text
+✓ 批改完成
+
+GradingResultMessage
+→ 得分
+→ 错误原因
+→ 反馈
+→ 数学原图错误定位（如有）
+```
+
+明确不复用：
+
+```text
+MessageGroup 的 AIMessage / reasoning / tool_calls 转换逻辑
+```
+
+原因是 `OCR / PARSING / DIFFICULTY_CLASSIFICATION / GRADING` 是明确的业务 Workflow 阶段，不是 Agent Tool Call。前端复用 DeerFlow 的聊天容器、步骤组件和流式基础能力，但保持自己的 `grading.*` 业务事件协议。
+
+如果批改 Workflow 接入 DeerFlow / LangGraph，可以通过 custom stream event 推送 `grading.*`；如果批改 Workflow 不依赖 DeerFlow，也继续使用同一事件协议，由自己的 SSE endpoint 推送，前端适配层不变。
 
 ---
 
@@ -787,13 +950,14 @@ GLM-OCR 会返回 `mdResults`、`layoutDetails` 等结构。数学主流程需�
 OCRResult
 ├── ocr_result_id
 ├── submission_id
-├── submission_version
 ├── model
 ├── status
 ├── md_results
 ├── layout_details
 └── created_at
 ```
+
+当前一个 Submission 最多只保留一个当前 OCRResult。重新提交被接受后，旧 OCRResult 会在新 Workflow 启动前清除。
 
 其中：
 
@@ -1235,7 +1399,7 @@ Rubric
 evidence.json
 模型路由
 Prompt
-GradingTask
+Submission status / current_stage
 Progress Event
 ```
 
@@ -1252,14 +1416,14 @@ Progress Event
 业务关系固定为：
 
 ```text
-当前有效 Submission.version
+当前 Submission
      ↓
 【完整 Grading Workflow】
      ↓
-当前有效 GradingResult
+当前 GradingResult
 ```
 
-> **一个当前有效 Submission 版本运行一次完整批改 Workflow，最终只保留一个当前有效 GradingResult。**
+> **一个当前 Submission 在一次成功批改后只保留一个当前有效 GradingResult。**
 
 不存在业务层面的“第一次批改结果”“第二次复核结果”。
 
@@ -1277,7 +1441,7 @@ OCR 结构化识别
 
 对外仍然只有一个最终批改结果。
 
-如果学生重新提交，新版本会覆盖旧 Submission 内容，并创建新的 `GradingTask`；旧版本任务即使之后完成，也必须因为 `submission_version` 不匹配而失效。
+如果学生在 `SUCCEEDED / FAILED` 后重新提交，系统清除旧 `OCRResult / GradingResult`，复用同一 `Submission` 并重新进入一次完整 Workflow；`PENDING / RUNNING` 时不接受新的提交。
 
 ---
 
@@ -1304,16 +1468,15 @@ Homework
    ↓
 Question
    ↓
-Student Submission（当前版本）
-   ↓
-GradingTask
+Student Submission（当前提交）
+├── image_url
+├── status
+└── current_stage
    ↓
 后台异步 Grading Workflow
    ├── OCR → OCRResult
    ├── Math：OCR Block 拼装 → Qwen3.5-4B 难度识别 → 模型路由 → 动态步骤评分
    └── English：DeepSeek v4 Flash Evidence Extraction → DeepSeek v4 Flash Scoring
-   ↓
-submission_version 校验
    ↓
 当前有效 GradingResult
    ↓
@@ -1337,27 +1500,31 @@ OCRResult.layout_details[index].bbox2d
 同时存在一条面向学生前端的实时进度链：
 
 ```text
-GradingTask / Grading Workflow
+Submission / Grading Workflow
         ↓
 grading.* Progress Event
         ↓
 SSE / Streaming
         ↓
-GradingProgress
+GradingProgressAdapter / useGradingStream
+        ↓
+DeerFlow Chat / GradingProgressMessage
         ↓
 学生实时看到 complete / active / pending
+        ↓
+GradingResultMessage
 ```
 
 其中：
 
 - `Teacher / Student / Class / Homework / Question` 定义业务上下文。
-- `Submission` 表示学生对某一道题当前有效的真实提交；重新提交直接更新同一 Submission，并令 `version + 1`。
-- `GradingTask` 负责工程层的后台异步执行、状态追踪、错误信息、页面恢复和提交版本保护。
+- `Submission` 表示学生对某一道题当前有效的真实答案，同时保存当前批改 `status / current_stage`；同一 `student_id + question_id` 只保留一条。
+- `PENDING / RUNNING` 时拒绝重复提交；`SUCCEEDED / FAILED` 后复用同一 Submission 重新提交。
 - `OCRResult` 持久化 OCR 的核心结构化识别证据；数学批改使用 `layout_details` 的 Block 顺序、内容和坐标。
 - `Grading Workflow` 负责 OCR、结构化解析、确定性题型路由，以及数学或英语作文的具体批改过程。
 - 数学题由 `Qwen3.5-4B` 识别 `easy / medium / hard`；easy / medium 使用 `Qwen3.5-4B`，hard 使用 `DeepSeek v4 Flash`。
 - 数学步骤由正式批改模型根据学生实际解法动态识别和评分，`error_block_ids` 与 OCR `bbox2d` 共同支持原图 Block 级错误定位。
 - 英语作文固定使用 `DeepSeek v4 Flash` 完成“证据提取 → 正式评分”两阶段 Workflow，不进行 difficulty 模型路由。
-- `GradingResult` 是当前有效提交版本对外输出的唯一最终批改结果。
+- `GradingResult` 是当前 Submission 成功完成 Workflow 后对外输出的唯一最终批改结果。
 - `MySQL` 保存业务事实和 OCR 证据，为后续学生画像、班级学情分析和 Teacher Agent 提供可信数据基础。
-- 学生实时进度 UI 复用 DeerFlow `ChainOfThought` 类步骤组件和 Streaming 思路，但不复用 `MessageGroup` 的聊天消息转换逻辑。
+- 学生实时进度继续展示在 DeerFlow Chat 中：复用聊天容器、Message Timeline、ChainOfThought 类步骤 UI 和 Streaming 基础能力；`grading.*` 业务事件不伪装成 `AIMessage / reasoning / tool_calls`。
