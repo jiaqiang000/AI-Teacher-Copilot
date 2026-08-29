@@ -66,7 +66,38 @@ grading_result_knowledge_point
 grading_result_error
 ```
 
-其中 `ocr_result` 保存一次当前 Submission 版本对应的 OCR 核心识别证据：
+当前不建立独立 `grading_task` 表。学生批改生命周期直接由 `submission` 保存：
+
+```text
+submission
+= 当前答案
++ status
++ current_stage
++ error_code / error_message
++ submitted_at / started_at / finished_at / updated_at
+```
+
+同一学生同一道题只保留一个当前 Submission：
+
+```text
+UNIQUE(student_id, question_id)
+```
+
+重新提交规则与 `docs/01-business-domain-and-grading-workflow.md` 保持一致：
+
+```text
+PENDING / RUNNING
+→ 禁止重新提交
+
+SUCCEEDED / FAILED
+→ 复用同一 Submission
+→ 替换 image_url
+→ 清除旧 OCRResult / GradingResult
+→ 重置为 PENDING / QUEUED
+→ 重新执行 Workflow
+```
+
+其中 `ocr_result` 保存当前 Submission 当前答案对应的 OCR 核心识别证据：
 
 ```text
 Submission
@@ -337,16 +368,17 @@ Redis
 
 ```text
 Submission
-= 学生当前提交了什么原图
+= 学生当前答案
++ 当前批改 status / current_stage
 
 OCRResult
-= OCR 从当前提交版本中识别到了什么
+= OCR 对当前 Submission 当前答案识别出的证据
 
 GradingResult
-= 模型基于题目和 OCR 证据如何批改
+= 当前 Submission 成功完成 Workflow 后的最终批改事实
 ```
 
-`OCRResult` 属于可追溯的批改证据数据，不进入 Student / Class Profile 聚合核心指标；Profile 仍以 `GradingResult` 的稳定结构化事实作为主要输入。
+`Submission` 是学生侧当前批改状态事实源，不另建 `grading_task` 事实表。`OCRResult` 属于可追溯的批改证据数据，不进入 Student / Class Profile 聚合核心指标；Profile 仍以 `GradingResult` 的稳定结构化事实作为主要输入。
 
 Student Profile（学生画像）与 Class Profile（班级画像）的生成方式：
 
