@@ -133,19 +133,11 @@ calculation
 content:
 解方程 2x + 4 = 8
 
-standard_answer:
-x = 2
-
 max_score:
 10
 ```
 
-后续还可以增加：
-
-```text
-reference_solution
-grading_rubric
-```
+数学步骤分由批改模型根据正式题目、题目总分和学生实际 OCR 作答动态判断，不要求教师预先维护固定解法或固定步骤评分模板。
 
 `difficulty` 不要求教师维护，由 `Qwen3.5-4B` 在数学批改 Workflow 中自动识别。
 
@@ -295,7 +287,7 @@ Submission.version += 1
               ↓                         ↓
            Math题目                 English作文
               │                         │
-         题目/标准答案              作文题目/Rubric
+       题目内容 / max_score          作文题目/Rubric
               │                         │
               └────────────┬────────────┘
                            ↓
@@ -327,7 +319,9 @@ Submission.version += 1
                            ↓
                           OCR
                            ↓
-                    结构化内容识别
+               持久化 OCRResult
+                           ↓
+                    结构化内容解析
                            ↓
               读取 Question 业务属性
                subject / question_type
@@ -354,10 +348,10 @@ Submission.version += 1
 其中：
 
 - `subject` 和 `question_type` 由教师创建 `Question` 时确定，批改 Workflow 直接读取，不再让模型重复识别。
-- 图中原先由 Qwen 判断“题型”的步骤，当前设计改为读取 `Question.subject / question_type` 做确定性路由，避免模型判断结果与业务数据冲突。
 - `difficulty` / 题目复杂度不要求教师填写。仅数学题进入 Math Workflow 后，由 `Qwen3.5-4B` 自动判断，并用于后续模型路由。
 - 英语作文不进行 difficulty 模型路由，固定使用 `DeepSeek v4 Flash` 完成两阶段 Workflow。
 - `knowledge_points` 不要求教师逐题标注，由批改模型根据题目、学生作答和批改过程自动识别，并进入最终 `GradingResult`。
+- `OCRResult` 保存 OCR 对学生原图的结构化识别证据，为数学步骤评分、错误追溯和原图错误定位提供依据。
 - `GradingTask` 用于工程层追踪任务状态、异步执行、失败记录、页面恢复和提交版本保护，它不改变业务层的 `Submission → GradingResult` 关系。
 
 ---
@@ -376,6 +370,8 @@ Submission
 后台异步执行
     ↓
 OCR
+    ↓
+持久化 OCRResult
     ↓
 结构化解析
     ↓
@@ -710,70 +706,381 @@ GradingProgress
 
 ### 5.3 Math Grading Workflow
 
-数学题当前重点支持计算题 / 解答题。
+数学题当前重点支持计算题 / 解答题。当前实现把 OCR 的结构化识别结果作为数学批改的证据层：代码负责保持学生原始书写顺序并构造稳定输入，真正的数学理解、解法识别和步骤评分由批改模型完成。
 
-整体流程对应当前数学批改设计：
+#### 5.3.1 整体流程
 
 ```text
 Math Submission
-      ↓
-Question
-├── 题目内容
-├── 标准答案
-├── max_score
-└── 可选 reference_solution / grading_rubric
-      +
-OCR 后的学生答案 / 解题过程
-      ↓
+        ↓
+GLM-OCR
+        ↓
+OCRResult 持久化
+├── md_results
+└── layout_details
+        ↓
+读取 layoutDetails[0]
+        ↓
+按照 index 升序排列
+        ↓
+拼装 OCR Student Submission
+        ↓
 Qwen3.5-4B
 难度识别 Prompt
-      ↓
-输出
-├── difficulty: easy / medium / hard
-└── reason: 一句话说明判断原因
-      ↓
+        ↓
+difficulty = easy / medium / hard
+        ↓
 模型路由
-├── easy
-│      ↓
-│   Qwen3.5-4B
-│
-├── medium
-│      ↓
-│   Qwen3.5-4B
-│
-└── hard
-       ↓
-   DeepSeek v4 Flash
-      ↓
-数学批改结果
-├── 对错判断
-├── 得分
-├── 过程分
-├── 错误诊断
-└── 知识点识别
-      ↓
+├── easy / medium → Qwen3.5-4B
+└── hard          → DeepSeek v4 Flash
+        ↓
+数学批改 Prompt
+        ↓
+理解学生实际采用的解法
+        ↓
+动态识别关键解题步骤
+        ↓
+逐步骤评分
+├── evidence_block_ids
+├── error_block_ids
+├── status
+├── earned_score
+└── max_score
+        ↓
 统一组装 GradingResult
+        ↓
+error_block_ids 回查 OCRResult.layout_details
+        ↓
+bbox2d
+        ↓
+前端在原始作业图片对应区域绘制红色矩形框
 ```
 
-这里的核心思想是：
+核心原则：
 
-> **先用 `Qwen3.5-4B` 做难度判断，再根据题目复杂度进行模型级联。简单和中等题继续走 `Qwen3.5-4B`，困难题调用 `DeepSeek v4 Flash`。**
+> **学生可能采用不同的正确解法。模型必须根据学生实际书写过程理解其解法并给步骤分，而不是要求学生匹配固定解题路径。**
 
-这样可以把大部分常规数学题留在低成本路径，只对确实困难的题使用更强模型。
+#### 5.3.2 OCRResult 持久化
 
-`Qwen3.5-4B` 和 `DeepSeek v4 Flash` 是当前统一模型版本；真正需要稳定的是输入输出协议和模型路由规则。
+GLM-OCR 会返回 `mdResults`、`layoutDetails` 等结构。数学主流程需要持久化 OCR 的核心结果，使系统可以区分“学生原图”“OCR 看到了什么”“模型如何批改”。
 
-数学 Workflow 最终至少需要产出当前题的：
+逻辑结构：
 
 ```text
-对错
-得分
-过程分
-错误诊断
-知识点
+OCRResult
+├── ocr_result_id
+├── submission_id
+├── submission_version
+├── model
+├── status
+├── md_results
+├── layout_details
+└── created_at
 ```
 
-这些结果再统一映射到 `GradingResult`，而不是让不同模型分别产生业务层批改结果。
+其中：
+
+```text
+md_results
+= GLM-OCR 返回的整体 Markdown 识别结果
+
+layout_details
+= GLM-OCR 返回的结构化 Block JSON
+```
+
+`layout_details` 直接以 JSON 持久化，不把每个 Block 拆成独立数据库表。当前数学步骤评分重点使用每个 Block 的：
+
+```text
+index
+label
+content
+bbox2d
+width
+height
+```
+
+例如：
+
+```json
+{
+  "index": 5,
+  "label": "formula",
+  "bbox2d": [280, 374, 810, 572],
+  "content": "$$ ... $$",
+  "width": 875,
+  "height": 1077
+}
+```
+
+这些字段分别承担：
+
+```text
+index
+→ 保持原始阅读 / 书写顺序
+
+label
+→ 区分 text / formula 等内容类型
+
+content
+→ 进入批改模型的 OCR 内容
+
+bbox2d + width + height
+→ 批改完成后定位回原始图片
+```
+
+OCRResult 是一次批改的核心证据数据，需要持久化；运行时拼装出来的 `OCR Student Submission` 只是模型输入，不单独建立业务实体或数据库表。
+
+#### 5.3.3 OCR Block → OCR Student Submission
+
+当前业务是一张图片对应一道题，因此 MVP 直接读取：
+
+```text
+layoutDetails[0]
+```
+
+按 `index ASC` 排序，然后把每个 Block 转成固定文本：
+
+```text
+[Block {index} | {label}]
+{content}
+```
+
+例如 OCR Block：
+
+```json
+{
+  "index": 5,
+  "label": "formula",
+  "content": "$$ I = ... $$"
+}
+```
+
+转换为：
+
+```text
+[Block 5 | formula]
+$$ I = ... $$
+```
+
+最终模型看到的学生作答类似：
+
+```text
+[Block 2 | text]
+Answer: Let
+
+[Block 3 | formula]
+$$
+I = ...
+$$
+
+[Block 4 | text]
+Then, by ...
+
+[Block 5 | formula]
+$$
+...
+$$
+
+[Block 6 | text]
+Thus,
+
+[Block 7 | formula]
+$$
+2I = ...
+$$
+```
+
+代码层只负责：
+
+```text
+OCR Block
+↓
+保持原始顺序
+↓
+拼装稳定的模型输入
+```
+
+代码不判断“哪几个 Block 是第几步”，也不在这一层做数学正确性判断。
+
+批改时 `Question` 使用数据库中的正式题目。OCR 图片中如果同时识别到了题干，不增加复杂的题干切割逻辑，而是在 Prompt 中明确：`Question` 是正式题目，模型应根据上下文区分 OCR 中的题目文字和学生实际作答。
+
+#### 5.3.4 数学模型路由
+
+输入 difficulty classifier 的题目来自正式 `Question.content`。
+
+```text
+Question.content
+      ↓
+Qwen3.5-4B
+      ↓
+difficulty
+├── easy
+├── medium
+└── hard
+```
+
+正式数学批改：
+
+```text
+easy / medium
+→ Qwen3.5-4B
+
+hard
+→ DeepSeek v4 Flash
+```
+
+两个正式批改模型使用相同的数学批改 Prompt 规则和输出 Contract，只替换模型。
+
+#### 5.3.5 数学步骤评分 Prompt
+
+System Prompt：
+
+```text
+你是一名数学教师，负责批改学生的数学解题过程并给出步骤分。
+
+你会收到：
+1. Question：正式数学题目
+2. Max Score：本题总分
+3. OCR Student Submission：OCR 按学生原始书写顺序识别得到的内容
+
+OCR Student Submission 中每段内容都带有 Block 编号以及 text / formula 类型。
+
+请完成以下任务：
+
+1. 理解题目以及学生实际采用的解题方法。
+
+2. 根据学生实际书写内容识别关键解题步骤。
+
+3. 学生可能采用不同的正确解法。
+   应根据学生自己的解题方法判断数学推理是否成立，
+   不能因为与常见解法不同而扣分。
+
+4. 判断每个关键步骤是否正确，并根据其重要程度分配步骤分。
+
+5. 每个步骤必须标记为：
+   - correct：步骤正确
+   - partial：思路或推导部分正确，但存在遗漏或局部错误
+   - incorrect：当前步骤本身存在数学错误
+   - consequential_error：当前步骤受到前序错误结果影响，但当前数学操作或推理方式本身合理
+
+6. 如果某一步出现错误，不要直接将之后所有步骤判错。
+   应继续判断后续步骤本身是否体现正确数学方法，并给予合理过程分。
+
+7. OCR 可能存在少量字符识别错误。
+   如果结合上下文能够高置信判断为 OCR 错误，可以按合理含义理解；
+   如果无法确定，不要擅自修改学生答案，并在 feedback 中指出 OCR 内容存在歧义。
+
+8. OCR Student Submission 中可能包含题目文字。
+   Question 字段中的内容是正式题目，请区分题目和学生实际作答。
+
+9. 所有步骤 max_score 的总和必须等于 Max Score。
+
+10. earned_score 必须等于所有步骤 earned_score 之和，并且不得超过 Max Score。
+
+11. evidence_block_ids 和 error_block_ids 必须引用 OCR Student Submission 中真实存在的 Block 编号。
+
+严格按照指定 JSON 格式输出。
+```
+
+User Prompt：
+
+```text
+Question:
+{question_content}
+
+Max Score:
+{max_score}
+
+OCR Student Submission:
+{ocr_blocks}
+
+请批改学生完整解题过程并给出步骤分。
+```
+
+#### 5.3.6 步骤评分输出 Contract
+
+模型需要对学生自己的解题过程动态识别步骤。每个步骤至少包含：
+
+```text
+step_index
+说明这是模型识别出的第几个关键步骤
+
+description
+说明这一步在做什么
+
+evidence_block_ids
+这一解题步骤对应哪些 OCR Block
+
+error_block_ids
+真正出现错误、需要在原图标记的 OCR Block；正确步骤为空数组
+
+status
+correct / partial / incorrect / consequential_error
+
+earned_score / max_score
+该步骤实际得分 / 该步骤满分
+
+feedback
+当前步骤的简短判断或错误原因
+```
+
+模型总分、总体反馈、错误诊断和步骤结果最终映射到统一 `GradingResult`。最终持久化 Schema 以 `docs/02-grading-result-schema.md` 为唯一字段定义来源，避免在 Workflow 文档里维护第二套业务 Schema。
+
+#### 5.3.7 原始图片错误步骤定位
+
+`error_block_ids` 用于把模型诊断重新定位回学生原图。
+
+例如模型返回：
+
+```json
+{
+  "error_block_ids": [11],
+  "feedback": "最终积分计算存在错误"
+}
+```
+
+后端根据 `Block 11` 回查当前 `OCRResult.layout_details`：
+
+```json
+{
+  "index": 11,
+  "bbox2d": [223, 964, 684, 1064],
+  "width": 875,
+  "height": 1077
+}
+```
+
+返回前端错误区域：
+
+```text
+block_id
+bbox
+image_width
+image_height
+message
+```
+
+前端根据图片当前展示尺寸计算：
+
+```text
+scale_x = rendered_width / image_width
+scale_y = rendered_height / image_height
+
+left   = x1 * scale_x
+top    = y1 * scale_y
+width  = (x2 - x1) * scale_x
+height = (y2 - y1) * scale_y
+```
+
+然后在原图上使用绝对定位绘制红色矩形框，并展示对应步骤 `feedback`。
+
+如果一个错误对应多个 `error_block_ids`，前端分别绘制多个矩形框，不强制合并成一个大框。
+
+当前 MVP 的定位粒度固定为：
+
+> **OCR Block 级错误定位。**
+
+如果整个公式是一个 OCR Block，即使错误只发生在其中一个字符，当前版本也框选整个公式 Block；不增加字符级 OCR 定位或额外视觉模型。
 
 ---
 
@@ -901,6 +1208,8 @@ Agent 2：基于原文 + Rubric + evidence 正式评分
 
 ```text
 OCR
+OCRResult
+OCR Block 拼装
 Qwen3.5-4B
 DeepSeek v4 Flash
 Agent 1
@@ -940,9 +1249,10 @@ Progress Event
 即使内部存在：
 
 ```text
+OCR 结构化识别
 难度识别
 模型路由
-证据提取
+数学步骤识别 / 英语证据提取
 正式评分
 错误诊断
 知识点识别
@@ -982,7 +1292,8 @@ Student Submission（当前版本）
 GradingTask
    ↓
 后台异步 Grading Workflow
-   ├── Math：Qwen3.5-4B 难度识别 → 模型路由 → 数学批改
+   ├── OCR → OCRResult
+   ├── Math：OCR Block 拼装 → Qwen3.5-4B 难度识别 → 模型路由 → 动态步骤评分
    └── English：DeepSeek v4 Flash Evidence Extraction → DeepSeek v4 Flash Scoring
    ↓
 submission_version 校验
@@ -990,6 +1301,20 @@ submission_version 校验
 当前有效 GradingResult
    ↓
 MySQL
+```
+
+数学批改结果还存在一条面向学生的错误定位链：
+
+```text
+GradingResult.math_detail.steps[].error_block_ids
+        ↓
+OCRResult.layout_details[index].bbox2d
+        ↓
+前端坐标换算
+        ↓
+学生原始作业图片红色矩形框
+        ↓
+对应步骤 feedback
 ```
 
 同时存在一条面向学生前端的实时进度链：
@@ -1011,9 +1336,11 @@ GradingProgress
 - `Teacher / Student / Class / Homework / Question` 定义业务上下文。
 - `Submission` 表示学生对某一道题当前有效的真实提交；重新提交直接更新同一 Submission，并令 `version + 1`。
 - `GradingTask` 负责工程层的后台异步执行、状态追踪、错误信息、页面恢复和提交版本保护。
+- `OCRResult` 持久化 OCR 的核心结构化识别证据；数学批改使用 `layout_details` 的 Block 顺序、内容和坐标。
 - `Grading Workflow` 负责 OCR、结构化解析、确定性题型路由，以及数学或英语作文的具体批改过程。
 - 数学题由 `Qwen3.5-4B` 识别 `easy / medium / hard`；easy / medium 使用 `Qwen3.5-4B`，hard 使用 `DeepSeek v4 Flash`。
+- 数学步骤由正式批改模型根据学生实际解法动态识别和评分，`error_block_ids` 与 OCR `bbox2d` 共同支持原图 Block 级错误定位。
 - 英语作文固定使用 `DeepSeek v4 Flash` 完成“证据提取 → 正式评分”两阶段 Workflow，不进行 difficulty 模型路由。
 - `GradingResult` 是当前有效提交版本对外输出的唯一最终批改结果。
-- `MySQL` 保存业务事实，为后续学生画像、班级学情分析和 Teacher Agent 提供可信数据基础。
+- `MySQL` 保存业务事实和 OCR 证据，为后续学生画像、班级学情分析和 Teacher Agent 提供可信数据基础。
 - 学生实时进度 UI 复用 DeerFlow `ChainOfThought` 类步骤组件和 Streaming 思路，但不复用 `MessageGroup` 的聊天消息转换逻辑。
