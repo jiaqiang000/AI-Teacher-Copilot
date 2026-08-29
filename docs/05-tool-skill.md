@@ -527,6 +527,8 @@ raw_name / raw_type
 
 因此 Teacher Agent 不需要自行把自然语言知识点再次映射成另一套内部分类；Profile、Grading History、Question Bank 等能力统一使用同一套标准 `knowledge_point_key`。
 
+`QuestionBankItem.knowledge_point_keys` 同样只使用标准 Taxonomy 中可落库的 `level = 2 knowledge_point_key`，因此画像结果可以直接作为 `search_question_bank` 的过滤条件。
+
 `get_student_grading_history` 等返回具体批改事实的 Tool 可以同时返回 `raw_name / raw_type`，让教师和 Agent 查看“这一次具体发生了什么”；聚合型 Tool 仍以标准 `key / code` 为主。
 
 ---
@@ -772,7 +774,32 @@ list_class_homeworks Tool
 ClassQueryService
         ↓
 MySQL homework
+
+search_question_bank Tool
+        ↓
+QuestionBankService
+        ↓
+MySQL question_bank_item
++ question_bank_item_knowledge_point
 ```
+
+题库查询业务逻辑只实现一套 `QuestionBankService`。教师普通作业创建页面搜索题库时不新增 Agent Tool，而是通过业务 API 复用同一 Service：
+
+```text
+Teacher UI
+↓
+QuestionBank API
+↓
+QuestionBankService
+
+Teacher Agent
+↓
+search_question_bank Tool
+↓
+QuestionBankService
+```
+
+因此 UI 题库搜索与 Agent 题库搜索共享同一套过滤语义和数据源，不维护两套查询逻辑。
 
 ---
 
@@ -790,7 +817,7 @@ MySQL homework
 | `get_homework_analysis` | MySQL 即时聚合 |
 | `get_question_analysis` | MySQL 即时聚合 |
 | `search_teaching_materials` | 后续：RAG / 教材知识库（本阶段暂缓） |
-| `search_question_bank` | MySQL Question Database（题库） |
+| `search_question_bank` | MySQL `question_bank_item + question_bank_item_knowledge_point` |
 
 ---
 
@@ -901,6 +928,20 @@ MySQL 异常
 时间范围内无作业
 时间范围过滤正确性
 班级权限隔离
+```
+
+`search_question_bank` 额外验证：
+
+```text
+按 subject 查询正确
+按 knowledge_point_keys 查询正确
+按 difficulty 查询正确
+按 question_type 查询正确
+按 grade 查询正确
+exclude_question_bank_item_ids 生效
+无匹配题目时返回 []
+返回的 knowledge_point_key 必须是合法标准 level=2 key
+返回对象必须是 QuestionBankItem，不能混入 Homework Question
 ```
 
 除 Tool 单元测试外，还需要进行 Agent 层 Tool Selection 评测。
@@ -1159,37 +1200,77 @@ TeachingMaterial
 
 ### 13.9 `search_question_bank`
 
-作用：根据知识点、难度和题型检索练习题。
+作用：根据标准知识点、难度、题型和年级检索独立 Question Bank 中的候选练习题。
 
 ```text
 输入
-subject（学科）                               必填
-knowledge_point_keys（标准二级知识点标识）    必填
-difficulty（难度）                           可选
-question_type（题型）                        可选
-count（数量）                                可选
-exclude_question_ids（排除题目）             可选
+subject（学科）                                   必填
+knowledge_point_keys（标准二级知识点标识）       必填
+difficulty（难度）                               可选
+question_type（题型）                            可选
+grade（年级）                                    可选
+count（数量）                                    可选
+exclude_question_bank_item_ids（排除题库题ID）   可选
 
 输出
-Question[]
+QuestionBankItem[]
 
 数据来源
-MySQL Question Database（题库）
+MySQL question_bank_item
++ question_bank_item_knowledge_point
++ knowledge_point
 ```
 
 题库中的知识点标签与 Student / Class Profile 使用同一套 Knowledge Point Taxonomy，因此画像得到的标准 `knowledge_point_key` 可以直接作为 `search_question_bank` 的检索条件，不增加第二套知识点映射。
 
+多个 `knowledge_point_keys` 默认表示至少命中其中一个。如果任务要求针对多个知识点分别选题，应分别调用该 Tool。
+
 返回结构：
 
 ```text
-Question
-├── question_id（题目ID）
+QuestionBankItem
+├── question_bank_item_id（题库题ID）
 ├── content（题目内容）
-├── knowledge_points（标准知识点）
+├── image_url（题目图片，可选）
+├── subject（学科）
+├── grade（年级）
+├── knowledge_point_keys（标准知识点）
 ├── difficulty（难度）
 ├── question_type（题型）
-└── answer / reference_answer（参考答案）
+└── reference_answer（参考答案）
 ```
+
+边界：
+
+```text
+QuestionBankItem
+= 独立题库资源
+
+Question
+= 已经属于某个 Homework 的实际作业题
+
+search_question_bank
+→ 只能返回 QuestionBankItem
+→ 不把 Homework Question 当成题库结果
+```
+
+Teacher Agent 使用 Tool 搜题；教师普通作业创建页面使用业务 API 搜题，两者复用同一 Service：
+
+```text
+Teacher UI
+↓
+QuestionBank API
+↓
+QuestionBankService
+
+Teacher Agent
+↓
+search_question_bank Tool
+↓
+QuestionBankService
+```
+
+不额外新增一个面向教师 UI 的 Agent Tool。
 
 ---
 
