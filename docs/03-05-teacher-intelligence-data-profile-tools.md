@@ -250,6 +250,7 @@ HomeworkAnalysis（作业分析）
 │
 ├── questions[]（题目表现）
 │   ├── question_id（题目ID）
+│   ├── question_no（题号）
 │   ├── avg_score_rate（平均得分率）
 │   ├── error_rate（错误率）
 │   └── common_error_codes[]（常见错误）
@@ -281,6 +282,7 @@ question
 QuestionAnalysis（题目分析）
 │
 ├── question_id（题目ID）
+├── question_no（题号）
 ├── homework_id（作业ID）
 ├── class_id（班级ID）
 │
@@ -494,6 +496,41 @@ list_class_homeworks（查询班级作业列表）
 ```
 
 它们只负责发现业务对象，不负责画像计算或学情分析。
+
+### 5.0 业务对象解析边界
+
+Teacher Agent 的正式业务 Tool 仍然使用明确的业务 ID 作为输入，例如：
+
+```text
+student_id
+class_id
+homework_id
+question_id
+```
+
+教师不需要感知这些内部 ID。教师自然语言中的：
+
+```text
+“张三”
+“八三班”
+“这次作业”
+“第 8 题”
+```
+
+由 Teacher Lead Agent 在正式 Tool Calling 之前完成业务对象解析。
+
+解析原则固定为：
+
+1. 优先使用当前 Teacher Business Context（教师业务上下文）中已经确定的对象；
+2. 需要发现班级学生时使用 `list_class_students`；
+3. 需要发现班级作业时使用 `list_class_homeworks`；
+4. 唯一匹配时直接继续；
+5. 存在多个候选、无法唯一确定时，通过 DeerFlow `ask_clarification` 请求教师确认；
+6. Teacher Agent 不得猜测 `student_id`、`class_id`、`homework_id` 或 `question_id`。
+
+例如教师说“第 8 题”时，系统先基于当前 `homework_id` 和 `Question.question_no = 8` 确定真实 `question_id`，再调用 `get_question_analysis`。
+
+业务对象解析属于正式 Tool Calling 前的参数准备，不改变 Tool 本身的职责，也不新增 Entity Resolution Tool / Skill / Agent。
 
 ---
 
@@ -787,6 +824,7 @@ QuestionAnalysis（题目分析）
 返回内容包括：
 
 ```text
+question_no（题号）
 attempt_count（作答人数）
 avg_score_rate（平均得分率）
 error_rate（错误率）
