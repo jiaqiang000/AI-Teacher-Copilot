@@ -172,6 +172,20 @@ Grading Workflow 读取 Question.difficulty
 
 后者属于结合历史数据生成的长期个性化反馈，不属于单次 `GradingResult` 本身。
 
+### 2.6 英语作文固定使用 EnglishEssayRubricV1
+
+英语作文不从 `Question` 读取可配置 Rubric。当前 MVP 统一使用系统内置 `EnglishEssayRubricV1（英语作文评分标准 V1）`：
+
+```text
+Content（内容）                    5 分
+Organization（组织结构与衔接）    5 分
+Grammar（语法与句式）             5 分
+Vocabulary（词汇）                5 分
+Total（总分）                    20 分
+```
+
+因此英语作文结果必须满足固定的四维评分 Contract；教师不可新增、删除或修改评分维度、权重及总分。详细 0–5 分档标准统一见 `docs/01-business-domain-and-grading-workflow.md`，本文件只定义结果 Schema 和确定性一致性约束。
+
 ---
 
 ## 3. 顶层结构
@@ -566,17 +580,21 @@ score.earned
 
 # 9. 英语作文扩展字段
 
-英语作文采用 Rubric 多维评分。
+英语作文采用系统固定 `EnglishEssayRubricV1（英语作文评分标准 V1）` 进行四维评分。
 
 ```text
 english_essay_detail（英语作文详情）
 ├── dimension_scores（多维评分）
 │   ├── content（内容）
-│   ├── organization（组织结构）
-│   ├── grammar（语法）
+│   ├── organization（组织结构与衔接）
+│   ├── grammar（语法与句式）
 │   └── vocabulary（词汇）
 ├── language_errors（语言错误列表）
-└── evidence（评分证据）
+└── evidence（按评分维度组织的评分证据）
+    ├── content[]（内容证据）
+    ├── organization[]（组织结构与衔接证据）
+    ├── grammar[]（语法与句式证据）
+    └── vocabulary[]（词汇证据）
 ```
 
 推荐：
@@ -609,11 +627,20 @@ english_essay_detail（英语作文详情）
         "suggestion": "I went to Beijing last summer."
       }
     ],
-    "evidence": [
-      "作文内容完整覆盖题目要求",
-      "过去时使用存在多处错误",
-      "段落之间连接词使用较少"
-    ]
+    "evidence": {
+      "content": [
+        "作文完整覆盖了题目要求的主要内容"
+      ],
+      "organization": [
+        "段落结构基本完整，但段落之间连接词较少"
+      ],
+      "grammar": [
+        "描述过去经历时多次使用一般现在时"
+      ],
+      "vocabulary": [
+        "用词总体准确，但表达较重复"
+      ]
+    }
   }
 }
 ```
@@ -623,8 +650,8 @@ english_essay_detail（英语作文详情）
 ```text
 dimension_scores（多维评分）
 content（内容维度）
-organization（组织结构维度）
-grammar（语法维度）
+organization（组织结构与衔接维度）
+grammar（语法与句式维度）
 vocabulary（词汇维度）
 score（该维度得分）
 max_score（该维度满分）
@@ -635,7 +662,43 @@ original（原句）
 suggestion（修改建议）
 
 evidence（评分证据）
+= 必须按 content / organization / grammar / vocabulary 四个维度分别组织
+= 用于说明每个 dimension score 的事实依据
 ```
+
+### 9.1 EnglishEssayRubricV1 结果约束
+
+英语作文结果必须满足以下确定性 Contract：
+
+```text
+dimension_scores
+必须且只能包含：
+content
+organization
+grammar
+vocabulary
+
+每个维度：
+max_score = 5
+score ∈ {0, 1, 2, 3, 4, 5}
+
+score.max = 20
+
+score.earned
+=
+content.score
++ organization.score
++ grammar.score
++ vocabulary.score
+
+score.rate
+=
+score.earned / 20
+```
+
+`evidence` 同样必须包含且只能包含四个固定维度键，每个键的值为该维度的证据字符串数组。Agent 1 负责提取这些证据，Agent 2 根据对应维度证据和 `EnglishEssayRubricV1` 给出分数。
+
+上述约束应由普通后端 Validator / GradingResultAssembler 做确定性校验，而不是仅依赖模型自行保证加总正确。如果维度缺失、出现额外维度、分数越界或总分不一致，应视为 Grading Output Contract 校验失败。
 
 标准错误的完整诊断语义统一保存在公共 `diagnosis.errors[]`；`language_errors` 只补充英语作文特有的原句和修改建议，不维护第二套错误类型定义。
 
@@ -920,11 +983,20 @@ score.max    = 3 + 4 + 3 = 10
         "suggestion": "I went to Beijing last summer."
       }
     ],
-    "evidence": [
-      "内容覆盖完整",
-      "过去时使用存在错误",
-      "段落之间连接词不足"
-    ]
+    "evidence": {
+      "content": [
+        "内容覆盖完整"
+      ],
+      "organization": [
+        "段落完整，但段落之间连接词不足"
+      ],
+      "grammar": [
+        "过去时使用存在错误"
+      ],
+      "vocabulary": [
+        "用词总体准确，但表达有一定重复"
+      ]
+    }
   },
 
   "execution_meta": {
@@ -936,6 +1008,14 @@ score.max    = 3 + 4 + 3 = 10
 
   "created_at": "2026-08-21T17:35:00+08:00"
 }
+```
+
+该示例满足：
+
+```text
+score.earned = 5 + 4 + 3 + 4 = 16
+score.max = 20
+score.rate = 16 / 20 = 0.8
 ```
 
 ---
@@ -976,7 +1056,7 @@ math_detail.steps[].evidence_block_ids（步骤 OCR 证据）
 math_detail.steps[].error_block_ids（错误定位 Block）
 math_detail.steps[].feedback（步骤反馈）
 
-english_essay_detail.evidence（英语作文评分证据）
+english_essay_detail.evidence（按四个 Rubric 维度组织的英语作文评分证据）
 ```
 
 `raw_name / raw_type` 必须作为诊断事实保存，但 Profile / Analysis 仍使用标准 `knowledge_point_key / error_code` 作为主要聚合维度；raw 字段主要用于教师查看具体语义、历史证据下钻、工程排查以及未来扩充 Taxonomy。
