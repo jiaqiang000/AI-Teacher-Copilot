@@ -31,6 +31,7 @@ Student Profile      Class Profile      即时分析
 MySQL
 = 业务事实的唯一事实源
 + Knowledge Point / Error Type 标准参考字典
++ Question Bank（题库资源）
 
 Redis
 = Student Profile（学生画像）
@@ -45,9 +46,24 @@ LLM
 = 基于结构化数据进行解释、规划和生成
 ```
 
+这里需要明确三类 MySQL 数据：
+
+```text
+业务事实
+= Teacher / Student / Class / Homework / Question / Submission / GradingResult 等
+
+标准参考字典
+= Knowledge Point / Error Type Taxonomy
+
+题库资源
+= QuestionBankItem 及其知识点关联
+```
+
+题库资源不是“某个学生发生了什么”的业务事实，也不是画像缓存；它是系统可反复检索和复用的教学资源。
+
 ---
 
-### 3.2 MySQL 数据模型：业务事实 + 标准参考字典
+### 3.2 MySQL 数据模型：业务事实 + 标准参考字典 + 题库资源
 
 保留业务事实表：
 
@@ -125,6 +141,23 @@ error_type
 ```
 
 这两张表不是“某个学生发生了什么”的业务事实，而是整个系统用于生成、校验、统计和检索的稳定 Taxonomy（标准分类体系）。
+
+MySQL 还维护独立题库资源：
+
+```text
+question_bank_item
+question_bank_item_knowledge_point
+```
+
+它们与 Homework 中的 `question` 明确分离：
+
+```text
+question
+= 已经属于某个 Homework、真正布置给学生的题
+
+question_bank_item
+= 系统题库中的可复用候选题
+```
 
 #### 3.2.1 Taxonomy 总体规则
 
@@ -373,6 +406,135 @@ evidence
 
 它们用于保留和展示具体业务语义。
 
+#### 3.2.7 Question Bank（题库资源）
+
+Question Bank 与 Homework Question 是两个不同对象。
+
+```text
+QuestionBankItem
+= 系统可复用题库资源
+= 可被多次检索和加入不同 Homework
+
+Question
+= 某次 Homework 中实际布置出去的题
+= 学生 Submission 的直接目标
+```
+
+题库主表：
+
+```text
+question_bank_item
+├── question_bank_item_id
+├── subject
+├── grade
+├── question_type
+├── difficulty
+├── content
+├── image_url
+├── reference_answer
+├── tags
+├── created_at
+└── updated_at
+```
+
+字段职责：
+
+```text
+question_bank_item_id
+= 题库题稳定 ID
+
+subject
+= math / english
+
+grade
+= 年级标签，用于题库筛选
+
+question_type
+= 题型
+
+difficulty
+= 题库预先维护的稳定难度标签
+= 当前数学使用 easy / medium / hard
+= 英语作文当前可为 null
+
+content
+= 题目正文
+
+image_url
+= 题库题原图，可选
+
+reference_answer
+= 参考答案 / 参考作答
+
+tags
+= 其他自由辅助标签
+= 不作为学习画像和主要统计主键
+```
+
+题库知识点不塞进自由 `tags`，统一关联已经存在的 Knowledge Point Taxonomy：
+
+```text
+question_bank_item_knowledge_point
+├── question_bank_item_id
+└── knowledge_point_key
+```
+
+约束：
+
+```text
+knowledge_point_key
+= 必须引用标准 level=2 Knowledge Point
+
+UNIQUE(question_bank_item_id, knowledge_point_key)
+```
+
+这样 Student / Class Profile 得到的标准 `knowledge_point_key` 可以直接用于题库检索，不需要再维护第二套知识点映射。
+
+#### QuestionBankItem → Question
+
+教师从题库中选择题目加入 Homework 时，不让 Homework 实时引用题库题，而是复制成新的 `Question`：
+
+```text
+QuestionBankItem qb_001
+        ↓ Copy
+Question q008
+```
+
+复制的核心题目属性：
+
+```text
+subject
+question_type
+difficulty
+content
+image_url
+```
+
+Homework 场景自己生成 / 确定：
+
+```text
+question_id
+homework_id
+question_no
+max_score
+```
+
+并记录：
+
+```text
+Question.source_question_bank_item_id = qb_001
+```
+
+该字段只用于追踪来源，不形成实时同步关系：
+
+```text
+后续 QuestionBankItem 被修改
+≠
+已经存在 / 已经发布的 Question 跟着变化
+```
+
+当前 MVP 的 Question Bank 只要求系统预置 / Seed Data + MySQL 条件查询，不建设教师题库管理、题库审核、题库版本、自动生成、去重、向量检索或 RAG。
+
 ---
 
 ### 3.3 Student Profile（学生画像）
@@ -592,9 +754,13 @@ MySQL
 │   ├── GradingResult Knowledge Point 事实
 │   └── GradingResult Error 事实
 │
-└── 标准参考字典
-    ├── Knowledge Point Taxonomy
-    └── Error Type Taxonomy
+├── 标准参考字典
+│   ├── Knowledge Point Taxonomy
+│   └── Error Type Taxonomy
+│
+└── 题库资源
+    ├── question_bank_item
+    └── question_bank_item_knowledge_point
 
 Redis
 ├── Student Profile（学生画像）
@@ -621,6 +787,10 @@ GradingResult
 Knowledge Point / Error Type Taxonomy
 = 系统标准参考字典
 = 不表示某个学生本次发生了什么
+
+QuestionBankItem
+= 系统可复用题库资源
+= 不等于某次 Homework 中已经布置的 Question
 ```
 
 `Submission` 是学生侧当前批改状态事实源，不另建 `grading_task` 事实表。`OCRResult` 属于可追溯的批改证据数据，不进入 Student / Class Profile 聚合核心指标；Profile 仍以 `GradingResult` 的稳定结构化事实作为主要输入。
@@ -1164,38 +1334,64 @@ TeachingMaterial[]（教学材料列表）
 
 **作用**
 
-根据知识点、难度和题型检索练习题，为学生个性化练习和班级分层练习提供候选题目。
+根据标准知识点、难度、题型和年级检索独立 Question Bank 中的练习题，为学生个性化练习和班级分层练习提供候选题目。
 
 **输入参数**
 
 ```text
-subject（学科）                        必填
-knowledge_point_keys（标准二级知识点标识） 必填
+subject（学科）                                   必填
+knowledge_point_keys（标准二级知识点标识）       必填
 
-difficulty（难度）                    可选
-question_type（题型）                 可选
-count（数量）                         可选
-exclude_question_ids（排除题目）      可选
+difficulty（难度）                               可选
+question_type（题型）                            可选
+grade（年级）                                    可选
+count（数量）                                    可选
+exclude_question_bank_item_ids（排除题库题ID）   可选
 ```
 
 题库题目的知识点标签与学习画像使用同一套 Knowledge Point Taxonomy，因此 Student / Class Profile 中的标准 `knowledge_point_key` 可以直接作为题库检索条件，不增加额外知识点映射层。
 
+多个 `knowledge_point_keys` 默认表示：
+
+```text
+至少命中其中一个标准知识点
+```
+
+如果业务要求“给三个知识点分别找题”，Teacher Agent / Skill 应分别按知识点调用 `search_question_bank`，而不是依赖一次查询自动平均分配题目。
+
 **输出**
 
 ```text
-Question[]（题目列表）
-├── question_id（题目ID）
+QuestionBankItem[]（题库题列表）
+├── question_bank_item_id（题库题ID）
 ├── content（题目内容）
-├── knowledge_points（标准知识点）
+├── image_url（题目图片，可选）
+├── subject（学科）
+├── grade（年级）
+├── knowledge_point_keys（标准知识点）
 ├── difficulty（难度）
 ├── question_type（题型）
-└── answer / reference_answer（参考答案）
+└── reference_answer（参考答案）
 ```
 
 **数据来源**
 
 ```text
-MySQL Question Database（题库）
+MySQL
+question_bank_item
++
+question_bank_item_knowledge_point
++
+knowledge_point
+```
+
+边界：
+
+```text
+search_question_bank
+→ 只返回 QuestionBankItem
+
+不得返回 Homework 中已经布置的 Question
 ```
 
 ---
@@ -1208,6 +1404,9 @@ MySQL Question Database（题库）
 ├── MySQL 业务事实
 ├── OCRResult 批改证据
 ├── Knowledge Point / Error Type Taxonomy 标准参考字典
+├── Question Bank
+│   ├── question_bank_item
+│   └── question_bank_item_knowledge_point
 ├── GradingResult Knowledge Point / Error 诊断事实
 ├── Student Profile（学生画像）
 ├── Class Profile（班级画像）
@@ -1237,7 +1436,7 @@ MySQL Question Database（题库）
 ├── get_homework_analysis
 ├── get_question_analysis
 ├── search_teaching_materials（后续 / 本阶段暂缓）
-└── search_question_bank
+└── search_question_bank → QuestionBankItem[]
           │
           ↓
 06–07 业务驱动的 Teacher Lead Agent + 按需 Multi-Agent
