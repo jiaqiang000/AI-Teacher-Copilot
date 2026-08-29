@@ -70,7 +70,7 @@ GradingResult
 
 其中最关键的是 `Question`、`Submission` 和 `GradingResult`。
 
-知识点不作为教师必须维护的前置业务对象。当前 MVP 中，知识点由批改模型自动识别，并作为 `GradingResult` 中的结构化诊断结果沉淀；后续如果引入统一知识点体系，再增加知识点标准化与映射层。
+Knowledge Point（知识点）和 Error Type（错误类型）不要求教师逐题手工维护。当前 MVP 已维护轻量的两级标准 Taxonomy：系统根据 `Question.subject` 读取当前学科允许的标准分类，并在正式批改时把标准 `level = 2` 候选提供给 Grading Model。模型从候选中选择 `knowledge_point_key / error_code`，同时生成 `raw_name / raw_type` 保留本次实际诊断语义；无法精确匹配现有小类时使用对应大类下的 `OTHER`。后端只通过 `TaxonomyValidator` 做确定性合法性校验，不增加独立标准化 Agent、Embedding Mapping 或第二次 LLM 映射。
 
 ---
 
@@ -369,6 +369,8 @@ Idempotency Key
                     ↓             ↓
                 数学批改       作文批改
                     ↓             ↓
+                  标准 Taxonomy 校验
+                    ↓             ↓
                     └──────┬──────┘
                            ↓
                   组装 GradingResult
@@ -387,7 +389,7 @@ Idempotency Key
 - `subject` 和 `question_type` 由教师创建 `Question` 时确定，批改 Workflow 直接读取，不再让模型重复识别。
 - `difficulty` / 题目复杂度不要求教师填写。仅数学题进入 Math Workflow 后，由 `Qwen3.5-4B` 自动判断，并用于后续模型路由。
 - 英语作文不进行 difficulty 模型路由，固定使用 `DeepSeek v4 Flash` 完成两阶段 Workflow。
-- `knowledge_points` 不要求教师逐题标注，由批改模型根据题目、学生作答和批改过程自动识别，并进入最终 `GradingResult`。
+- `knowledge_points / errors` 不要求教师逐题标注。系统根据 `Question.subject` 提供当前学科标准 Taxonomy；Grading Model 从标准 `level = 2` 小类中选择 `knowledge_point_key / error_code`，同时生成 `raw_name / raw_type`，最终结果在写入 `GradingResult` 前通过 `TaxonomyValidator` 校验。
 - `OCRResult` 保存 OCR 对学生原图的结构化识别证据，为数学步骤评分、错误追溯和原图错误定位提供依据。
 - `Submission.status / current_stage` 是当前批改状态事实源；SSE / Streaming Event 只负责把状态变化实时推送给前端。
 - 用户上传后仍在 DeerFlow Chat 中实时看到 OCR、解析、难度判断、批改、结果组装等过程；本次简化只删除独立任务和版本竞争设计，不削减前端过程可视化能力。
@@ -914,18 +916,24 @@ difficulty = easy / medium / hard
 ├── easy / medium → Qwen3.5-4B
 └── hard          → DeepSeek v4 Flash
         ↓
-数学批改 Prompt
+读取 Math Knowledge Point / Error Type Taxonomy
+        ↓
+将标准 level=2 候选注入数学批改 Prompt
         ↓
 理解学生实际采用的解法
         ↓
 动态识别关键解题步骤
         ↓
-逐步骤评分
+逐步骤评分 + 结构化诊断
 ├── evidence_block_ids
 ├── error_block_ids
 ├── status
 ├── earned_score
-└── max_score
+├── max_score
+├── knowledge_point key / raw_name
+└── error code / raw_type
+        ↓
+TaxonomyValidator
         ↓
 统一组装 GradingResult
         ↓
@@ -1110,7 +1118,7 @@ hard
 → DeepSeek v4 Flash
 ```
 
-两个正式批改模型使用相同的数学批改 Prompt 规则和输出 Contract，只替换模型。
+两个正式批改模型使用相同的数学批改 Prompt 规则、Taxonomy Contract 和输出 Contract，只替换模型。
 
 #### 5.3.5 数学步骤评分 Prompt
 
@@ -1123,6 +1131,8 @@ System Prompt：
 1. Question：正式数学题目
 2. Max Score：本题总分
 3. OCR Student Submission：OCR 按学生原始书写顺序识别得到的内容
+4. Knowledge Point Taxonomy：当前数学学科允许使用的标准知识点分类
+5. Error Type Taxonomy：当前数学学科允许使用的标准错误分类
 
 OCR Student Submission 中每段内容都带有 Block 编号以及 text / formula 类型。
 
@@ -1160,6 +1170,18 @@ OCR Student Submission 中每段内容都带有 Block 编号以及 text / formul
 
 11. evidence_block_ids 和 error_block_ids 必须引用 OCR Student Submission 中真实存在的 Block 编号。
 
+12. knowledge_point.key 必须从 Knowledge Point Taxonomy 中的 level=2 小类选择，不得自行创造新的 key。
+
+13. error.code 必须从 Error Type Taxonomy 中的 level=2 小类选择，不得自行创造新的 code。
+
+14. 如果没有完全匹配的现有小类，使用最合适的大类下的 OTHER。
+
+15. 每个 KnowledgePoint 都必须输出 raw_name，用自然语言概括本次实际识别出的具体知识点语义。
+
+16. 每个 Error 都必须输出 raw_type，用自然语言概括本次实际发生的具体错误语义。
+
+17. raw_name / raw_type 不替代标准 key / code；标准分类用于统计和检索，raw 字段用于保留本次具体语义。
+
 严格按照指定 JSON 格式输出。
 ```
 
@@ -1172,11 +1194,19 @@ Question:
 Max Score:
 {max_score}
 
+Knowledge Point Taxonomy:
+{knowledge_point_taxonomy}
+
+Error Type Taxonomy:
+{error_type_taxonomy}
+
 OCR Student Submission:
 {ocr_blocks}
 
-请批改学生完整解题过程并给出步骤分。
+请批改学生完整解题过程并给出步骤分，同时按照给定 Taxonomy 输出结构化知识点和错误诊断。
 ```
+
+当前比赛规模下可以直接提供当前 `subject` 的标准分类，不要求第一版再建设复杂的动态候选裁剪。后续如果 Taxonomy 明显扩大，可以再按题目范围缩小 Prompt 中的候选集合，业务 Contract 不变。
 
 #### 5.3.6 步骤评分输出 Contract
 
@@ -1204,6 +1234,25 @@ earned_score / max_score
 feedback
 当前步骤的简短判断或错误原因
 ```
+
+除数学步骤结果外，正式批改模型还需要按照 `docs/02-grading-result-schema.md` 输出 `diagnosis` 所需的结构化诊断信息：
+
+```text
+KnowledgePoint
+├── key
+├── raw_name
+├── performance
+└── evidence
+
+Error
+├── code
+├── raw_type
+├── knowledge_point_key
+├── description
+└── evidence
+```
+
+标准 `name / type` 不要求模型生成，由后端根据已经通过 Validator 的标准 `key / code` 从 Taxonomy 字典补齐。
 
 模型总分、总体反馈、错误诊断和步骤结果最终映射到统一 `GradingResult`。最终持久化 Schema 以 `docs/02-grading-result-schema.md` 为唯一字段定义来源，避免在 Workflow 文档里维护第二套业务 Schema。
 
@@ -1289,10 +1338,13 @@ Model = DeepSeek v4 Flash
                  ↓
              evidence.json
                  ↓
-Agent 2：评分与反馈
+Agent 2：评分 + 反馈 + 结构化诊断
 Model = DeepSeek v4 Flash
                  ↓
+        TaxonomyValidator
+                 ↓
       分数 + 扣分原因 + 修改建议
+      + KnowledgePoint / Error
                  ↓
         统一组装 GradingResult
 ```
@@ -1329,13 +1381,13 @@ DeepSeek v4 Flash
 与各评分维度相关的原文证据
 ```
 
-Agent 1 **不直接打分**，只生成结构化评分证据：
+Agent 1 **不直接打分，也不负责最终 Taxonomy 分类**，只生成结构化评分证据：
 
 ```text
 evidence.json
 ```
 
-#### Agent 2：真正评分与反馈
+#### Agent 2：真正评分、反馈与结构化诊断
 
 模型：
 
@@ -1353,6 +1405,10 @@ Rubric
 学生作文原文
 +
 Agent 1 evidence.json
++
+Knowledge Point Taxonomy
++
+Error Type Taxonomy
 ```
 
 职责：
@@ -1365,18 +1421,31 @@ Agent 1 evidence.json
 说明扣分原因
 ↓
 给出修改建议
+↓
+从当前英语 Taxonomy 的 level=2 小类中
+选择 knowledge_point_key / error_code
+↓
+同时生成 raw_name / raw_type
 ```
+
+Agent 2 与数学正式批改使用相同的 Taxonomy Contract：不得自行创造新的 `key / code`；没有精确小类时使用对应大类下的 `OTHER`；每条诊断都保留 `raw_name / raw_type`。标准 `name / type` 由后端字典补齐。
 
 因此英语作文 Workflow 的核心关系是：
 
 ```text
 DeepSeek v4 Flash
-Agent 1：只找证据，不打分
+Agent 1：只找证据，不打分、不做最终 Taxonomy 分类
         ↓
 evidence
         ↓
 DeepSeek v4 Flash
-Agent 2：基于原文 + Rubric + evidence 正式评分
+Agent 2：原文 + Rubric + evidence + Taxonomy
+        ↓
+评分 + 反馈 + 标准 key/code + raw 语义
+        ↓
+TaxonomyValidator
+        ↓
+GradingResult
 ```
 
 这种设计保留了当前图中的 AutoSCORE 思路，同时避免两个 Agent 对同一件事情重复判断。
@@ -1399,6 +1468,8 @@ Rubric
 evidence.json
 模型路由
 Prompt
+Knowledge Point / Error Type Taxonomy
+TaxonomyValidator
 Submission status / current_stage
 Progress Event
 ```
@@ -1407,7 +1478,7 @@ Progress Event
 
 业务层不需要感知内部进行了多少模型调用，也不把 Agent 1 / Agent 2 的中间结果当成多次业务批改。
 
-知识点、错误类型、错误原因等诊断信息同样由 Workflow 内部识别，不要求教师预先逐题标注。
+知识点、错误类型和错误原因等诊断信息同样由 Workflow 内部识别，不要求教师预先逐题标注；其中标准 `key / code` 必须从当前学科 Taxonomy 的 `level = 2` 小类中选择，`raw_name / raw_type` 保存模型对本次具体情况识别出的原始语义。
 
 ---
 
@@ -1437,6 +1508,7 @@ OCR 结构化识别
 正式评分
 错误诊断
 知识点识别
+Taxonomy 校验
 ```
 
 对外仍然只有一个最终批改结果。
@@ -1451,7 +1523,7 @@ OCR 结构化识别
 
 本文件只定义 `GradingResult` 在业务流程中的位置、来源和职责，不在这里重复展开具体字段设计。
 
-> `GradingResult` 的完整 Schema、公共字段、数学扩展字段、英语作文扩展字段以及哪些字段用于后续数据沉淀，统一在 `docs/02-grading-result-schema.md` 中定义。
+> `GradingResult` 的完整 Schema、公共字段、标准 Taxonomy 诊断字段、数学扩展字段、英语作文扩展字段以及哪些字段用于后续数据沉淀，统一在 `docs/02-grading-result-schema.md` 中定义。
 
 ---
 
@@ -1475,8 +1547,8 @@ Student Submission（当前提交）
    ↓
 后台异步 Grading Workflow
    ├── OCR → OCRResult
-   ├── Math：OCR Block 拼装 → Qwen3.5-4B 难度识别 → 模型路由 → 动态步骤评分
-   └── English：DeepSeek v4 Flash Evidence Extraction → DeepSeek v4 Flash Scoring
+   ├── Math：OCR Block 拼装 → Qwen3.5-4B 难度识别 → 模型路由 → Taxonomy Prompt → 动态步骤评分 → TaxonomyValidator
+   └── English：DeepSeek v4 Flash Evidence Extraction → DeepSeek v4 Flash Scoring + Taxonomy Diagnosis → TaxonomyValidator
    ↓
 当前有效 GradingResult
    ↓
@@ -1524,7 +1596,8 @@ GradingResultMessage
 - `Grading Workflow` 负责 OCR、结构化解析、确定性题型路由，以及数学或英语作文的具体批改过程。
 - 数学题由 `Qwen3.5-4B` 识别 `easy / medium / hard`；easy / medium 使用 `Qwen3.5-4B`，hard 使用 `DeepSeek v4 Flash`。
 - 数学步骤由正式批改模型根据学生实际解法动态识别和评分，`error_block_ids` 与 OCR `bbox2d` 共同支持原图 Block 级错误定位。
-- 英语作文固定使用 `DeepSeek v4 Flash` 完成“证据提取 → 正式评分”两阶段 Workflow，不进行 difficulty 模型路由。
+- 英语作文固定使用 `DeepSeek v4 Flash` 完成“证据提取 → 正式评分与结构化诊断”两阶段 Workflow，不进行 difficulty 模型路由。
+- Knowledge Point / Error Type 使用系统维护的两级 Taxonomy；模型选择标准 `level = 2` `key / code` 并保留 `raw_name / raw_type`，后端 Validator 只负责合法性校验。
 - `GradingResult` 是当前 Submission 成功完成 Workflow 后对外输出的唯一最终批改结果。
-- `MySQL` 保存业务事实和 OCR 证据，为后续学生画像、班级学情分析和 Teacher Agent 提供可信数据基础。
+- `MySQL` 保存业务事实、OCR 证据和 Taxonomy 标准参考字典，为后续学生画像、班级学情分析和 Teacher Agent 提供可信数据基础。
 - 学生实时进度继续展示在 DeerFlow Chat 中：复用聊天容器、Message Timeline、ChainOfThought 类步骤 UI 和 Streaming 基础能力；`grading.*` 业务事件不伪装成 `AIMessage / reasoning / tool_calls`。
