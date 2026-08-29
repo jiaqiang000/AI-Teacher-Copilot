@@ -223,15 +223,9 @@ content: Write an article about your summer vacation.
 image_url: null
 max_score: 20
 source_question_bank_item_id: null
-
-rubric:
-├── Content: 5
-├── Organization: 5
-├── Grammar: 5
-└── Vocabulary: 5
 ```
 
-英语 Rubric 的固定规则在后续对应设计中单独确定；本节只保持当前英语作文批改输入不变。
+英语作文统一使用系统内置 `EnglishEssayRubricV1（英语作文评分标准 V1）`。Rubric 是系统级批改规则，不属于 `Question` 字段，也不随每一道 Question 单独保存。当前 MVP 中英语作文 `max_score` 固定为 `20`，教师不可修改评分维度、维度权重或总分。
 
 `question_no（题号）` 表示题目在当前 Homework（作业）中的展示序号。例如：
 
@@ -362,7 +356,9 @@ subject 继承 Homework.subject
 ├── 数学：教师选择 calculation / solution
 └── 英语：当前固定 essay
 ↓
-教师填写 max_score
+确定 max_score
+├── 数学：教师填写 max_score
+└── 英语作文：系统固定 max_score = 20
 ↓
 数学 → Qwen3.5-4B 预判 difficulty
 英语 → difficulty = null
@@ -374,6 +370,8 @@ subject 继承 Homework.subject
 保存 Question
 ```
 
+英语作文创建时前端不提供 Rubric 编辑入口，也不提供总分编辑入口。
+
 #### 路径 B：上传题目图片
 
 ```text
@@ -384,6 +382,10 @@ subject 继承 Homework.subject
 复用 OCR Service
 ↓
 提取题目 content
+↓
+确定 max_score
+├── 数学：教师填写 max_score
+└── 英语作文：系统固定 max_score = 20
 ↓
 数学 → Qwen3.5-4B 预判 difficulty
 英语 → difficulty = null
@@ -423,14 +425,16 @@ Question.image_url
 ├── content
 └── image_url
 ↓
-教师设置 max_score
+确定 max_score
+├── 数学：教师设置 max_score
+└── 英语作文：系统固定 max_score = 20
 ↓
 生成新的 question_id / question_no
 ↓
 source_question_bank_item_id = 原题库题ID
 ```
 
-`reference_answer` 仍属于题库资源，不在本次 Question 数据模型中新增第二套答案字段；学生批改流程继续以正式题目、学生作答和既有批改 Contract 为准。
+`reference_answer` 仍属于题库资源，不在本次 Question 数据模型中新增第二套答案字段；学生批改流程继续以正式题目、学生作答和既有批改 Contract 为准。`QuestionBankItem` 同样不保存英语 Rubric 配置；英语作文题被复制到 Homework 后直接使用系统内置 `EnglishEssayRubricV1`。
 
 #### 发布前最小校验
 
@@ -443,6 +447,7 @@ question_no 在当前 Homework 内唯一
 Question.content 非空
 Question.max_score > 0
 数学 Question.difficulty 非空
+英语作文 Question.max_score = 20
 Question.subject 与 Homework.subject 一致
 ```
 
@@ -643,7 +648,8 @@ Idempotency Key
                    Math        English
                     ↓             ↓
               按 difficulty      作文批改
-                模型路由
+                模型路由          +
+                    ↓       EnglishEssayRubricV1
                     ↓             ↓
                   标准 Taxonomy 校验
                     ↓             ↓
@@ -664,7 +670,7 @@ Idempotency Key
 
 - `subject` 和 `question_type` 在创建 `Question` 时确定，批改 Workflow 直接读取，不再让模型重复识别。
 - `difficulty` 是数学 Question 的题目属性：教师自行创建数学题时由 `Qwen3.5-4B` 预判并经教师确认；从题库添加时直接复制 `QuestionBankItem.difficulty`；学生批改 Workflow 只读取它，不再次识别。
-- 英语作文当前 `difficulty = null`，不进行 difficulty 模型路由，固定使用 `DeepSeek v4 Flash` 完成两阶段 Workflow。
+- 英语作文当前 `difficulty = null`，不进行 difficulty 模型路由，固定使用 `DeepSeek v4 Flash` 完成两阶段 Workflow；评分统一读取系统内置 `EnglishEssayRubricV1`，不从 Question 读取自定义 Rubric。
 - `knowledge_points / errors` 不要求教师逐题标注。系统根据 `Question.subject` 提供当前学科标准 Taxonomy；Grading Model 从标准 `level = 2` 小类中选择 `knowledge_point_key / error_code`，同时生成 `raw_name / raw_type`，最终结果在写入 `GradingResult` 前通过 `TaxonomyValidator` 校验。
 - `OCRResult` 只保存 OCR 对学生 Submission 原图的结构化识别证据；教师上传题目图片时虽然复用 OCR Service，但不创建 `OCRResult`。
 - `Submission.status / current_stage` 是当前批改状态事实源；SSE / Streaming Event 只负责把状态变化实时推送给前端。
@@ -1560,6 +1566,81 @@ height = (y2 - y1) * scale_y
 
 英语作文当前不进行 easy / medium / hard 模型路由。
 
+#### 5.4.1 EnglishEssayRubricV1（英语作文评分标准 V1）
+
+当前 MVP 只使用一套系统内置评分标准：
+
+```text
+Content（内容）                    0–5 分
+Organization（组织结构与衔接）    0–5 分
+Grammar（语法与句式）             0–5 分
+Vocabulary（词汇）                0–5 分
+Total（总分）                    20 分
+```
+
+业务约束固定为：
+
+```text
+教师不可新增 / 删除评分维度
+教师不可修改各维度满分或权重
+教师不可修改英语作文总分
+Question / QuestionBankItem 不保存 rubric 字段
+英语作文 Question.max_score 固定为 20
+每个维度只能输出 0 / 1 / 2 / 3 / 4 / 5 整数分
+```
+
+四个维度的分档定义如下。
+
+**Content（内容）**
+
+| 分数 | 判定标准 |
+|---:|---|
+| 5 | 完整回应题目要求，主题明确，相关细节充分 |
+| 4 | 基本完整回应，存在少量遗漏或细节不足 |
+| 3 | 基本切题，但有明显内容遗漏，展开较简单 |
+| 2 | 只回应部分要求，重要内容缺失或存在明显偏题 |
+| 1 | 与题目相关内容很少，仅勉强回应任务 |
+| 0 | 基本没有与题目相关的有效内容 |
+
+**Organization（组织结构与衔接）**
+
+| 分数 | 判定标准 |
+|---:|---|
+| 5 | 结构清楚，顺序合理，段落和衔接自然 |
+| 4 | 整体结构清楚，存在少量衔接不自然 |
+| 3 | 有基本结构，但存在跳跃、重复或衔接不足 |
+| 2 | 结构较弱，内容之间关系不够清楚 |
+| 1 | 内容明显零散，阅读顺序较难理解 |
+| 0 | 基本无法识别文章结构 |
+
+**Grammar（语法与句式）**
+
+| 分数 | 判定标准 |
+|---:|---|
+| 5 | 语法基本正确，句式使用恰当，只有极少小错误 |
+| 4 | 存在少量语法错误，但基本不影响理解 |
+| 3 | 有较明显、重复的语法错误，但主要意思可以理解 |
+| 2 | 语法错误较多，部分影响理解 |
+| 1 | 大量严重语法错误，明显影响理解 |
+| 0 | 基本无法形成可理解的英文句子 |
+
+**Vocabulary（词汇）**
+
+| 分数 | 判定标准 |
+|---:|---|
+| 5 | 用词准确恰当，有一定丰富度，拼写错误极少 |
+| 4 | 用词总体准确，有一定变化，少量用词或拼写错误 |
+| 3 | 基础词汇够用但较重复，存在一些用词或拼写问题 |
+| 2 | 词汇有限，用词 / 拼写错误较多并影响表达 |
+| 1 | 词汇非常有限，难以准确表达意思 |
+| 0 | 基本没有足够的有效英文词汇进行评价 |
+
+补充规则：
+
+- 拼写问题归入 `Vocabulary（词汇）`。
+- 同一问题原则上只在最相关维度扣分，避免同一个错误同时在 Grammar 和 Vocabulary 重复扣分。
+- Rubric 作为系统运行时常量 / 配置提供给两个评分阶段，不从 Question 数据读取。
+
 参考思路：
 
 ```text
@@ -1571,7 +1652,7 @@ AAAI 2026
 核心思想不是让两个 Agent 重复打分，而是把“找评分证据”和“根据证据评分”拆开：
 
 ```text
-作文原文 + 作文题目 + 评分标准 Rubric
+作文原文 + 作文题目 + EnglishEssayRubricV1
                  ↓
 Agent 1：评分证据提取
 Model = DeepSeek v4 Flash
@@ -1589,7 +1670,7 @@ Model = DeepSeek v4 Flash
         统一组装 GradingResult
 ```
 
-#### Agent 1：评分证据提取
+#### 5.4.2 Agent 1：评分证据提取
 
 模型：
 
@@ -1604,30 +1685,25 @@ DeepSeek v4 Flash
 +
 作文题目
 +
-评分标准 Rubric
+EnglishEssayRubricV1（系统固定英语作文评分标准）
 ```
 
 职责：
 
-> 根据 Rubric，从学生作文中提取能够支持后续评分的客观证据。
+> 根据 `EnglishEssayRubricV1`，从学生作文中分别提取能够支持四个评分维度判断的客观证据。
 
-例如关注：
-
-```text
-内容是否覆盖题目要求
-结构与组织情况
-语法表现
-词汇使用
-与各评分维度相关的原文证据
-```
-
-Agent 1 **不直接打分，也不负责最终 Taxonomy 分类**，只生成结构化评分证据：
+固定关注：
 
 ```text
-evidence.json
+Content（内容）
+Organization（组织结构与衔接）
+Grammar（语法与句式）
+Vocabulary（词汇）
 ```
 
-#### Agent 2：真正评分、反馈与结构化诊断
+Agent 1 **不直接打分，也不负责最终 Taxonomy 分类**，只生成按四个评分维度组织的结构化评分证据 `evidence.json`。具体持久化结构以 `docs/02-grading-result-schema.md` 为准。
+
+#### 5.4.3 Agent 2：真正评分、反馈与结构化诊断
 
 模型：
 
@@ -1640,7 +1716,7 @@ DeepSeek v4 Flash
 ```text
 作文题目
 +
-Rubric
+EnglishEssayRubricV1
 +
 学生作文原文
 +
@@ -1654,9 +1730,9 @@ Error Type Taxonomy
 职责：
 
 ```text
-依据 Rubric 正式评分
+依据 EnglishEssayRubricV1 正式评分
 ↓
-给出分数
+四个维度分别输出 0–5 整数分
 ↓
 说明扣分原因
 ↓
@@ -1674,14 +1750,16 @@ Agent 2 与数学正式批改使用相同的 Taxonomy Contract：不得自行创
 
 ```text
 DeepSeek v4 Flash
-Agent 1：只找证据，不打分、不做最终 Taxonomy 分类
+Agent 1：原文 + 题目 + EnglishEssayRubricV1
+        ↓
+按四维提取证据，不打分、不做最终 Taxonomy 分类
         ↓
 evidence
         ↓
 DeepSeek v4 Flash
-Agent 2：原文 + Rubric + evidence + Taxonomy
+Agent 2：原文 + EnglishEssayRubricV1 + evidence + Taxonomy
         ↓
-评分 + 反馈 + 标准 key/code + raw 语义
+四维评分 + 反馈 + 标准 key/code + raw 语义
         ↓
 TaxonomyValidator
         ↓
@@ -1704,7 +1782,7 @@ Qwen3.5-4B
 DeepSeek v4 Flash
 Agent 1
 Agent 2
-Rubric
+EnglishEssayRubricV1
 evidence.json
 模型路由
 Prompt
@@ -1787,7 +1865,7 @@ Student Submission（当前提交）
 后台异步 Grading Workflow
    ├── OCR → OCRResult
    ├── Math：OCR Block 拼装 → 读取 Question.difficulty → 模型路由 → Taxonomy Prompt → 动态步骤评分 → TaxonomyValidator
-   └── English：DeepSeek v4 Flash Evidence Extraction → DeepSeek v4 Flash Scoring + Taxonomy Diagnosis → TaxonomyValidator
+   └── English：EnglishEssayRubricV1 → DeepSeek v4 Flash Evidence Extraction → DeepSeek v4 Flash Scoring + Taxonomy Diagnosis → TaxonomyValidator
    ↓
 当前有效 GradingResult
    ↓
@@ -1831,13 +1909,14 @@ GradingResultMessage
 - `Teacher / Student / Class / Homework / Question` 定义业务上下文；`Homework` 先以 `DRAFT` 创建，发布后进入 `PUBLISHED`。
 - `QuestionBankItem` 是可复用题库资源；加入 Homework 时复制为独立 `Question`，已存在 Question 不受题库后续修改影响。
 - 教师自行创建数学 Question 时由 `Qwen3.5-4B` 预判 difficulty 并允许教师发布前修正；题库题直接复制已有 difficulty。
+- 英语作文 `Question.max_score` 固定为 `20`，`Question / QuestionBankItem` 不保存 Rubric；正式批改统一使用系统内置 `EnglishEssayRubricV1`。
 - `Submission` 表示学生对某一道题当前有效的真实答案，同时保存当前批改 `status / current_stage`；同一 `student_id + question_id` 只保留一条。
 - `PENDING / RUNNING` 时拒绝重复提交；`SUCCEEDED / FAILED` 后复用同一 Submission 重新提交。
 - `OCRResult` 持久化学生 Submission 的 OCR 核心结构化识别证据；数学批改使用 `layout_details` 的 Block 顺序、内容和坐标。
 - `Grading Workflow` 负责 OCR、结构化解析、确定性题型路由，以及数学或英语作文的具体批改过程。
 - 数学批改直接读取 `Question.difficulty`：easy / medium 使用 `Qwen3.5-4B`，hard 使用 `DeepSeek v4 Flash`，学生批改阶段不重新进行 difficulty classification。
 - 数学步骤由正式批改模型根据学生实际解法动态识别和评分，`error_block_ids` 与 OCR `bbox2d` 共同支持原图 Block 级错误定位。
-- 英语作文固定使用 `DeepSeek v4 Flash` 完成“证据提取 → 正式评分与结构化诊断”两阶段 Workflow，不进行 difficulty 模型路由。
+- 英语作文固定使用 `DeepSeek v4 Flash` 完成“按 `EnglishEssayRubricV1` 提取四维证据 → 正式四维评分与结构化诊断”两阶段 Workflow，不进行 difficulty 模型路由。
 - Knowledge Point / Error Type 使用系统维护的两级 Taxonomy；模型选择标准 `level = 2` `key / code` 并保留 `raw_name / raw_type`，后端 Validator 只负责合法性校验。
 - `GradingResult` 是当前 Submission 成功完成 Workflow 后对外输出的唯一最终批改结果。
 - `MySQL` 保存业务事实、OCR 证据、Taxonomy 标准参考字典和题库资源，为后续学生画像、班级学情分析和 Teacher Agent 提供可信数据基础。
