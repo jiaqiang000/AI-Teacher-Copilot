@@ -124,6 +124,9 @@ Homework
 ```text
 question_id: q001
 
+question_no:
+1
+
 subject:
 math
 
@@ -148,6 +151,9 @@ max_score:
 ```text
 question_id: q101
 
+question_no:
+1
+
 subject:
 english
 
@@ -171,9 +177,20 @@ rubric:
 
 ```text
 Question
-├── subject
-└── question_type
+├── question_no（题号）
+├── subject（学科）
+└── question_type（题型）
 ```
+
+`question_no（题号）` 表示题目在当前 Homework（作业）中的展示序号。例如：
+
+```text
+homework_id = hw_004
+question_id = q008
+question_no = 8
+```
+
+教师和学生看到的是“第 8 题”，系统内部仍然使用 `question_id` 标识具体题目。同一个 Homework 内 `question_no` 不重复。教师创建作业题目时，由前端按顺序默认生成 `1、2、3……`，需要时允许教师调整。
 
 后面的 Workflow 直接依据这些业务属性路由，不再使用 LLM 重复识别学科和题型。
 
