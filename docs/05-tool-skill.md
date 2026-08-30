@@ -822,7 +822,28 @@ list_class_homeworks
 
 ## 8. implementation（实现）
 
-DeerFlow 中自定义 Tool 使用 LangChain Tool 机制实现，可以使用 `@tool` 或 `BaseTool`。
+Teacher Copilot 不再自己实现第二套 Tool Registry。当前业务 Tool 直接接入 DeerFlow Harness 的配置装载链路：
+
+```text
+DeerFlow config.yaml
+        ↓
+ToolConfig
+├── name
+├── group
+└── use
+        ↓
+get_available_tools()
+        ↓
+根据 ToolConfig.use 动态加载 BaseTool
+        ↓
+teacher_copilot.tools.*
+        ↓
+Service
+        ↓
+Repository
+```
+
+Teacher Tool 本身仍然使用 LangChain `@tool` / `BaseTool` 实现。例如：
 
 ```python
 from langchain_core.tools import tool
@@ -830,7 +851,7 @@ from langchain_core.tools import tool
 
 @tool(
     "get_student_profile",
-    args_schema=GetStudentProfileInput
+    args_schema=GetStudentProfileInput,
 )
 def get_student_profile(
     student_id: str,
@@ -838,6 +859,10 @@ def get_student_profile(
     sections: list[str] | None = None,
 ) -> dict:
     """查询学生长期学习画像。"""
+
+    # 当前登录用户、角色等可信身份信息来自 DeerFlow / Backend Runtime Context，
+    # 不由 LLM 在 Tool 参数中提供。
+    # Tool Adapter 先完成业务权限校验，再调用 Service。
 
     profile = profile_service.get_student_profile(
         student_id=student_id,
@@ -847,10 +872,16 @@ def get_student_profile(
     return filter_sections(profile, sections)
 ```
 
+实现时需要使用 DeerFlow / LangGraph Runtime Context 获取当前可信请求主体；具体 Runtime 注入方式以当前 DeerFlow 版本的 Tool Runtime API 为准，不在业务 Input Schema 中增加 `teacher_id` 让 LLM 自己填写。
+
 Tool 层只负责：
 
 ```text
-接收 Agent 参数
+接收 Agent 业务参数
+↓
+读取可信 Runtime Context
+↓
+调用 TeacherPermissionService 做权限校验
 ↓
 调用业务 Service
 ↓
@@ -862,7 +893,9 @@ Tool 层只负责：
 统一采用：
 
 ```text
-Tool
+DeerFlow Tool Runtime
+↓
+Teacher Copilot Tool Adapter
 ↓
 Service
 ↓
@@ -912,6 +945,8 @@ QuestionBankService
 
 Teacher Agent
 ↓
+DeerFlow Tool Runtime
+↓
 search_question_bank Tool
 ↓
 QuestionBankService
@@ -953,21 +988,23 @@ student_id = stu_001
 
 并直接相信 `teacher_id`。
 
-权限信息必须来自后端 Runtime Context（运行时上下文）：
+权限链路固定为：
 
 ```text
-当前登录教师身份
+当前已认证用户身份
         ↓
-Runtime / Backend Context
+DeerFlow / Backend Runtime Context
         ↓
-Tool
+Teacher Copilot Tool Adapter
         ↓
-权限校验
+TeacherPermissionService
         ↓
-确认教师是否有权访问 Student / Class / Homework
+确认当前教师是否有权访问 Student / Class / Homework / Question
+        ↓
+业务 Service
 ```
 
-LLM 只负责提供业务查询参数：
+LLM 只负责提供**查询对象参数**：
 
 ```text
 student_id
@@ -977,7 +1014,19 @@ question_id
 subject
 ```
 
-用户身份、角色和权限由系统提供并校验。
+而：
+
+```text
+Runtime 中的当前用户身份
+= 请求主体
+
+LLM 参数中的 student_id / class_id / homework_id / question_id
+= 被查询业务对象
+```
+
+二者不能混淆。即使 Teacher Business Context 中已有某个 `class_id / homework_id`，Tool Service 仍然必须重新校验当前教师是否有权限访问该对象。
+
+当前比赛项目只做必要的教师数据隔离与对象归属校验，不为此额外设计复杂企业级 RBAC 系统。
 
 ---
 
@@ -1394,6 +1443,8 @@ QuestionBankService
 
 ## 14. DeerFlow Tool 与 Skill 接入
 
+本节是 Teacher Copilot Tool / Skill 接入 DeerFlow Harness 的唯一详细实现说明。业务 Tool Contract 仍以本文前述章节和 `docs/03-05-teacher-intelligence-data-profile-tools.md` 为准。
+
 ### 14.1 Tool 注册
 
 当前阶段只注册实际实现的 8 个 Tool。`search_teaching_materials` 的注册配置留到后续 RAG / Teaching Knowledge Base 实现时再加入。
@@ -1452,43 +1503,157 @@ tools:
   use: teacher_copilot.tools.resource:search_teaching_materials
 ```
 
-### 14.2 Skill 实现
+工程规则固定为：
+
+```text
+1. ToolConfig.name
+   必须与最终 BaseTool.name 一致
+
+2. ToolConfig.group
+   用于 teacher-copilot Custom Agent 的 tool_groups 限制
+
+3. ToolConfig.use
+   必须指向最终可以被 DeerFlow 动态加载的 BaseTool / @tool 对象
+```
+
+Teacher Copilot 不再维护自己的 Tool Registry；Tool 的发现和加载直接由 DeerFlow `get_available_tools()` 完成。
+
+### 14.2 SKILL.md 使用 DeerFlow 原生格式
 
 当前阶段实现 4 个 `SKILL.md`；`personalized-intervention` 的设计保留，但不进入当前 Skill 注册与执行范围。
 
-当前阶段逻辑目录：
+每个 `SKILL.md` 分为两层：
 
 ```text
-skills/
-├── student-diagnosis/
-│   └── SKILL.md
-├── class-learning-analysis/
-│   └── SKILL.md
-├── homework-review/
-│   └── SKILL.md
-└── differentiated-practice/
-    └── SKILL.md
+YAML Frontmatter
+= DeerFlow 机器读取的 Metadata / Tool Policy
+
+Markdown 正文
+= Teacher Copilot 教学任务 SOP
 ```
 
-后续启用教学资料检索能力后再增加：
+统一模板：
 
-```text
-skills/
-└── personalized-intervention/
-    └── SKILL.md
+```markdown
+---
+name: student-diagnosis
+description: 分析一个学生的长期学习状态、薄弱知识点、重复错误与趋势，并使用历史批改事实提供证据。
+allowed-tools:
+  - get_student_profile
+  - get_student_grading_history
+---
+
+# Task Goal
+
+# Required Tools
+
+# Workflow
+
+# Evidence Rules
+
+# Output Format
+
+# Fallback
 ```
 
-每个 `SKILL.md` 至少定义：
+这里必须区分两个概念：
 
 ```text
-name（Skill 名称）
-description（何时使用）
-task_goal（任务目标）
-required_tools（主要 Tool）
-workflow（执行步骤）
-evidence_rules（事实验证规则）
-output_format（输出结构）
-fallback（失败 / 数据不足处理）
+allowed-tools
+= DeerFlow Runtime 权限边界
+= Skill 激活后最多允许访问哪些 Tool
+
+Required Tools
+= Teacher Copilot SOP 业务要求
+= 正常完成当前教学任务必须调用哪些 Tool
+```
+
+因此不能把现有 `required_tools` 简单替换为 `allowed-tools`。两者同时存在，但职责不同。
+
+`task_goal / required_tools / workflow / evidence_rules / output_format / fallback` 等内容放在 Markdown 正文中，不作为自定义 frontmatter 字段；这样遵守 DeerFlow 当前 SKILL frontmatter schema。
+
+### 14.3 当前 4 个 Skill 的 allowed-tools
+
+`student-diagnosis`：
+
+```yaml
+allowed-tools:
+  - get_student_profile
+  - get_student_grading_history
+```
+
+`class-learning-analysis`：
+
+```yaml
+allowed-tools:
+  - get_class_profile
+  - get_student_profile
+```
+
+`homework-review`：
+
+```yaml
+allowed-tools:
+  - get_homework_analysis
+  - get_question_analysis
+  - get_class_profile
+```
+
+`differentiated-practice`：
+
+```yaml
+allowed-tools:
+  - get_class_profile
+  - list_class_students
+  - get_student_profile
+  - search_question_bank
+```
+
+后续启用 `personalized-intervention` 时：
+
+```yaml
+allowed-tools:
+  - get_student_profile
+  - get_student_grading_history
+  - search_teaching_materials
+  - search_question_bank
+```
+
+`allowed-tools` 是最大权限，不代表每次执行必须机械调用全部 Tool；Required Tool Coverage 与 Tool Sequence Correctness 由 Skill SOP 和 `docs/08.md` Eval Case 判断。
+
+### 14.4 Skill 发现、激活与 Tool Policy 直接复用 DeerFlow
+
+Teacher Copilot 不新增 `TeacherSkillRouter` 或 `SkillPermissionManager`。
+
+真实执行链固定为：
+
+```text
+AgentConfig 中启用 Skill
+        ↓
+DeerFlow 暴露可发现 Skill Metadata
+        ↓
+模型根据任务读取对应 SKILL.md
+或用户显式 /skill-name 激活
+        ↓
+SkillActivationMiddleware / skill_context
+        ↓
+SkillToolPolicyMiddleware
+        ↓
+读取 active Skill 的 allowed-tools
+        ↓
+限制当前模型可见 / 可执行 Tool
+        ↓
+按 SKILL.md 正文 SOP 执行
+```
+
+因此：
+
+```text
+DeerFlow
+= 负责 Skill 发现、加载、激活和 Tool 权限约束
+
+Teacher Copilot SKILL.md
+= 负责教学任务目标、Required Tools、Workflow、Evidence Rules、Output Format、Fallback
 ```
 
 Skill 不直接访问 MySQL、Redis 或 RAG，只通过 Tool 获取数据和资源。
@@ -1497,7 +1662,7 @@ Skill 不直接访问 MySQL、Redis 或 RAG，只通过 Tool 获取数据和资�
 
 ## 15. 推荐代码结构
 
-当前阶段：
+当前阶段业务 Python 代码：
 
 ```text
 teacher_copilot/
@@ -1524,38 +1689,48 @@ teacher_copilot/
 │   ├── question_analysis_service.py
 │   └── question_bank_service.py
 │
-├── repositories/
-│   ├── mysql/
-│   └── redis/
-│
-└── skills/
+└── repositories/
+    ├── mysql/
+    └── redis/
+```
+
+Teacher Skill 不再放到 `teacher_copilot/skills/` 自己维护第二套目录，而是进入 DeerFlow 默认项目 Skill Root：
+
+```text
+skills/
+└── public/
     ├── student-diagnosis/
+    │   └── SKILL.md
     ├── class-learning-analysis/
+    │   └── SKILL.md
     ├── homework-review/
+    │   └── SKILL.md
     └── differentiated-practice/
+        └── SKILL.md
 ```
 
 后续 RAG / Teaching Knowledge Base 阶段再增加：
 
 ```text
-services/
+teacher_copilot/services/
 └── teaching_material_service.py
 
-repositories/
+teacher_copilot/repositories/
 └── rag/
 
-skills/
+skills/public/
 └── personalized-intervention/
+    └── SKILL.md
 ```
 
 职责边界：
 
 ```text
-Tool
-= Agent 能调用什么
+Tool Adapter
+= Agent 能调用什么业务能力
 
 Schema
-= 输入参数和返回结果的结构
+= Tool 输入参数和返回结果结构
 
 Service
 = 业务逻辑如何执行
@@ -1563,8 +1738,11 @@ Service
 Repository
 = 数据如何读取和写入
 
-Skill
-= 多个 Tool 按什么教学流程组合
+SKILL.md
+= 多个 Tool 按什么教学 SOP 组合
+
+DeerFlow Skill Runtime
+= Skill 如何被发现、激活并约束 Tool 权限
 ```
 
 ---
@@ -1628,9 +1806,33 @@ Agent = 根据用户目标选择并执行能力
 Multi-Agent = 真实业务有并行 / 隔离 / 独立审核收益时的按需协作
 ```
 
+DeerFlow 只承担 Harness 级执行能力；ProfileAlgorithmV1、AnalysisCalculationV1、QuestionBankService 等教育业务实现仍属于 Teacher Copilot。
+
 ---
 
 ## 17. 参考
+
+实现阶段 DeerFlow 代码以当前 `main` 为准，重点复用：
+
+```text
+Tool Config
+→ backend/packages/harness/deerflow/config/tool_config.py
+
+Tool Loading
+→ backend/packages/harness/deerflow/tools/tools.py
+
+Skill Frontmatter
+→ backend/packages/harness/deerflow/skills/frontmatter.py
+
+Skill Activation / Tool Policy
+→ backend/packages/harness/deerflow/agents/middlewares/skill_activation_middleware.py
+→ backend/packages/harness/deerflow/agents/middlewares/skill_tool_policy_middleware.py
+
+Skills Root Config
+→ backend/packages/harness/deerflow/config/skills_config.py
+```
+
+架构参考：
 
 - DeerFlow Agent Core：https://hawkli-1994.github.io/deerflow-book/chapters/05-agent-core.html
 - DeerFlow Skills & Tools：https://hawkli-1994.github.io/deerflow-book/chapters/06-skills-tools.html
