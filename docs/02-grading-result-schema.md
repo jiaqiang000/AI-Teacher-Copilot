@@ -186,6 +186,53 @@ Total（总分）                    20 分
 
 因此英语作文结果必须满足固定的四维评分 Contract；教师不可新增、删除或修改评分维度、权重及总分。详细 0–5 分档标准统一见 `docs/01-business-domain-and-grading-workflow.md`，本文件只定义结果 Schema 和确定性一致性约束。
 
+### 2.7 DeerFlow 职责边界：GradingResult 是业务事实，不是 Agent Trace
+
+`GradingResult` 属于 Teacher Copilot 的教育业务 Source of Truth，当前正式保存于 MySQL 业务数据层。DeerFlow 可以参与执行、Streaming 和可观测，但不能替代 GradingResult 本身。
+
+```text
+GradingResult
+= Teacher Copilot 业务事实
+= 当前 Submission 最终成功批改结果
+= MySQL 持久化
+```
+
+明确不把以下位置作为 GradingResult 的事实源：
+
+```text
+DeerFlow ThreadState
+DeerFlow Run output
+DeerFlow RunEventStore
+DeerFlow Memory
+Langfuse Trace
+```
+
+读取关系固定为：
+
+```text
+Student UI
+→ GradingResult API
+→ MySQL GradingResult
+→ GradingResultMessage
+
+Teacher Agent
+→ Teacher Tool
+→ Service
+→ MySQL GradingResult / 基于 GradingResult 的 Profile / Analysis
+```
+
+而 DeerFlow / Langfuse 负责的是另一类问题：
+
+```text
+RunEventStore / Langfuse
+= “这个结果是怎么生成的”的执行证据与 Trace
+
+GradingResult
+= “最终业务结果是什么”的业务事实
+```
+
+因此不因为接入 DeerFlow 而在当前 GradingResult Schema 中新增 `deerflow_run_id / thread_id / langfuse_trace_id` 等 Harness 字段；需要做执行链排查和 Eval 时，通过评测运行记录建立关联即可。
+
 ---
 
 ## 3. 顶层结构
