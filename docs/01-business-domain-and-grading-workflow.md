@@ -409,6 +409,28 @@ Question.image_url
 = 教师上传的题目原图，可选保留
 ```
 
+#### DeerFlow 复用落地：题目图片上传
+
+教师端上传题目图片时，只复用 DeerFlow 已有的前端文件选择、上传交互和文件校验 primitives，不把 DeerFlow Thread Upload 当成 Question 的正式业务存储。
+
+```text
+直接复用：
+- DeerFlow 文件选择 / Upload UI primitives
+- frontend/src/core/uploads/file-validation.ts 等文件大小、类型校验逻辑
+- 可复用的上传进度与错误展示交互
+
+本项目新增：
+- QuestionAssetService
+- Question 业务图片上传 API
+- 正式业务资产存储
+- Question.image_url
+
+明确不复用：
+- /api/threads/{thread_id}/uploads/... 作为 Question.image_url
+```
+
+原因是 DeerFlow Thread Upload 属于聊天线程的 user-data 生命周期，而 `Question.image_url` 属于 Homework 的业务资产。删除 / 清理 Thread 文件不能影响已经发布的 Question。
+
 #### 路径 C：从 Question Bank 添加
 
 ```text
@@ -521,6 +543,24 @@ Submission
 ```
 
 这里仍然**没有分数、知识点分析或评语**；这些属于 `GradingResult`。`Submission` 只负责当前答案和当前批改生命周期。
+
+#### Submission 图片资产与 DeerFlow Upload 边界
+
+`Submission.image_url` 是当前学生答案的正式业务资产引用，不使用 DeerFlow Thread Upload 临时文件地址作为 Source of Truth。
+
+```text
+Student Frontend
+↓
+复用 DeerFlow 文件选择 / validation primitives
+↓
+SubmissionAssetService【本项目】
+↓
+业务图片存储
+↓
+Submission.image_url
+```
+
+这样即使聊天 Thread 的 user-data 被单独清理，也不会导致当前 Submission 原图丢失。DeerFlow Upload 在这里复用的是上传交互和校验能力，不承担教育业务资产生命周期。
 
 当前参赛项目采用简化的重新提交规则：
 
@@ -1048,7 +1088,70 @@ OCR 完成：
 
 #### 5.2.8 DeerFlow Chat 与 Streaming 复用边界
 
-学生端继续复用 DeerFlow Chat 作为主要交互容器，而不是另外做一个脱离聊天上下文的进度页面。
+学生端继续复用 DeerFlow Chat 作为主要交互容器，但 `Submission` 仍然是教育业务执行对象，不把学生批改强行改造成 DeerFlow Agent Run。
+
+##### 5.2.8.1 Submission 不使用 DeerFlow Run 作为业务状态
+
+```text
+Submission
+= 教育业务当前答案 + 批改生命周期
+
+DeerFlow Run
+= 一次 Agent Graph / Harness 执行生命周期
+```
+
+因此明确禁止：
+
+```text
+submission_id = deerflow_run_id
+Submission.status 直接读取 DeerFlow Run.status
+GradingResult 依赖 DeerFlow Run output 才能成为业务事实
+```
+
+`Submission.status / current_stage` 始终是批改状态和页面恢复的 Source of Truth。
+
+##### 5.2.8.2 后端 Streaming：复用 StreamBridge，不复用 Run 生命周期
+
+学生批改事件继续使用已经定义的 `grading.*` 业务协议，后端复用 DeerFlow `StreamBridge` 的 publish / subscribe / end 等流式基础能力：
+
+```text
+run_grading_workflow(submission_id)
+        ↓
+更新 MySQL Submission.status / current_stage
+        ↓
+emit grading.* Event
+        ↓
+GradingStreamAdapter【本项目】
+        ↓
+DeerFlow StreamBridge.publish()【复用】
+        ↓
+GET /api/submissions/{submission_id}/events【本项目】
+        ↓
+grading_sse_consumer【本项目薄 Adapter】
+        ↓
+Browser
+```
+
+当前复用边界：
+
+```text
+直接复用：
+- DeerFlow StreamBridge
+- event publish / subscribe / end 基础能力
+- SSE 格式化方式可以参考 / 复用公共 helper
+
+本项目新增：
+- GradingStreamAdapter
+- Submission SSE Endpoint
+- grading_sse_consumer
+
+明确不直接复用：
+- DeerFlow Gateway 针对 Agent Run 的 sse_consumer / RunManager 生命周期
+```
+
+原因是 DeerFlow 原生 Run SSE 同时绑定 `RunRecord / RunManager / Agent Run lifecycle`；如果直接套用，会重新把 Submission 变成 Agent Run。当前只复用 StreamBridge 这一层基础设施。
+
+##### 5.2.8.3 前端：复用 Chat / ChainOfThought primitives，新增 Grading Adapter
 
 学生提交后的消息时间线固定为：
 
@@ -1060,32 +1163,61 @@ GradingProgressMessage
 GradingResultMessage
 ```
 
-前端复用：
+前端直接复用：
 
 ```text
 DeerFlow Chat 页面 / Message Timeline
 +
-ChainOfThought 类步骤 UI primitives
-+
-已有 Streaming / SSE 基础设施
+frontend/src/components/ai-elements/chain-of-thought.tsx
+├── ChainOfThought
+├── ChainOfThoughtContent
+└── ChainOfThoughtStep
 ```
 
-前端新增一层很薄的批改适配：
+本项目新增：
 
 ```text
-GradingProgressAdapter / useGradingStream
-= 订阅 grading.* Event
-= 读取 / 恢复 Submission.status + current_stage
-= 转换为 complete / active / pending
+frontend/src/core/grading/types.ts
+
+frontend/src/core/grading/lifecycle.ts
+└── gradingEventToProgressUpdate()
+
+frontend/src/core/grading/hooks.ts
+└── useGradingStream()
 
 GradingProgressMessage
-= 位于 DeerFlow Chat 消息时间线中
-= 内部复用 ChainOfThought 类步骤组件展示批改阶段
-
 GradingResultMessage
-= grading.completed 后
-= 在同一聊天上下文中展示最终 GradingResult
 ```
+
+`gradingEventToProgressUpdate()` 可以沿用 DeerFlow 已有 task lifecycle reducer 的实现模式，但转换的是：
+
+```text
+grading.stage.started
+grading.stage.completed
+grading.stage.failed
+grading.completed
+```
+
+而不是：
+
+```text
+task_running
+AIMessage
+ToolMessage
+reasoning
+tool_calls
+```
+
+`GradingProgressMessage` 内部把当前 Submission 的阶段转换为：
+
+```text
+complete
+active
+pending
+failed
+```
+
+然后通过 DeerFlow ChainOfThought UI primitives 展示。
 
 示例 UI：
 
@@ -1100,16 +1232,6 @@ AI Teacher：
 ✓ OCR 识别完成
 ● 正在解析学生作答
 ○ 正在批改
-○ 正在生成批改结果
-```
-
-后续随着事件到达更新为：
-
-```text
-✓ 图片上传完成
-✓ OCR 识别完成
-✓ 作答解析完成
-● 正在批改
 ○ 正在生成批改结果
 ```
 
@@ -1131,9 +1253,31 @@ GradingResultMessage
 MessageGroup 的 AIMessage / reasoning / tool_calls 转换逻辑
 ```
 
-原因是 `OCR / PARSING / GRADING` 是明确的业务 Workflow 阶段，不是 Agent Tool Call。前端复用 DeerFlow 的聊天容器、步骤组件和流式基础能力，但保持自己的 `grading.*` 业务事件协议。
+原因是 `OCR / PARSING / GRADING` 是确定的业务 Workflow 阶段，不是 Agent Tool Call。
 
-如果批改 Workflow 接入 DeerFlow / LangGraph，可以通过 custom stream event 推送 `grading.*`；如果批改 Workflow 不依赖 DeerFlow，也继续使用同一事件协议，由自己的 SSE endpoint 推送，前端适配层不变。
+##### 5.2.8.4 页面刷新与事件重连边界
+
+页面刷新后仍然执行：
+
+```text
+GET /api/submissions/{submission_id}
+        ↓
+读取持久化 status / current_stage
+        ↓
+重建 complete / active / pending
+        ↓
+重新订阅 /events
+```
+
+DeerFlow StreamBridge 的 replay / reconnect 能力只用于提升实时体验；即使实时事件无法完整重放，也不能影响页面恢复，因为：
+
+```text
+Submission.status / current_stage
+= 最终状态事实源
+
+StreamBridge / grading.* Event
+= 实时增量体验
+```
 
 ---
 
@@ -1893,9 +2037,13 @@ Submission / Grading Workflow
         ↓
 grading.* Progress Event
         ↓
-SSE / Streaming
+GradingStreamAdapter
         ↓
-GradingProgressAdapter / useGradingStream
+DeerFlow StreamBridge
+        ↓
+Submission SSE Endpoint
+        ↓
+useGradingStream
         ↓
 DeerFlow Chat / GradingProgressMessage
         ↓
@@ -1911,6 +2059,7 @@ GradingResultMessage
 - 教师自行创建数学 Question 时由 `Qwen3.5-4B` 预判 difficulty 并允许教师发布前修正；题库题直接复制已有 difficulty。
 - 英语作文 `Question.max_score` 固定为 `20`，`Question / QuestionBankItem` 不保存 Rubric；正式批改统一使用系统内置 `EnglishEssayRubricV1`。
 - `Submission` 表示学生对某一道题当前有效的真实答案，同时保存当前批改 `status / current_stage`；同一 `student_id + question_id` 只保留一条。
+- `Question.image_url / Submission.image_url` 是 Teacher Copilot 正式业务资产引用；只复用 DeerFlow 上传 UI / validation primitives，不把 Thread Upload 当业务资产 Source of Truth。
 - `PENDING / RUNNING` 时拒绝重复提交；`SUCCEEDED / FAILED` 后复用同一 Submission 重新提交。
 - `OCRResult` 持久化学生 Submission 的 OCR 核心结构化识别证据；数学批改使用 `layout_details` 的 Block 顺序、内容和坐标。
 - `Grading Workflow` 负责 OCR、结构化解析、确定性题型路由，以及数学或英语作文的具体批改过程。
@@ -1920,4 +2069,4 @@ GradingResultMessage
 - Knowledge Point / Error Type 使用系统维护的两级 Taxonomy；模型选择标准 `level = 2` `key / code` 并保留 `raw_name / raw_type`，后端 Validator 只负责合法性校验。
 - `GradingResult` 是当前 Submission 成功完成 Workflow 后对外输出的唯一最终批改结果。
 - `MySQL` 保存业务事实、OCR 证据、Taxonomy 标准参考字典和题库资源，为后续学生画像、班级学情分析和 Teacher Agent 提供可信数据基础。
-- 学生实时进度继续展示在 DeerFlow Chat 中：复用聊天容器、Message Timeline、ChainOfThought 类步骤 UI 和 Streaming 基础能力；`grading.*` 业务事件不伪装成 `AIMessage / reasoning / tool_calls`。
+- 学生实时进度继续展示在 DeerFlow Chat 中：复用聊天容器、Message Timeline、ChainOfThought 类步骤 UI 和 StreamBridge 基础能力；`grading.*` 业务事件不伪装成 `AIMessage / reasoning / tool_calls`，页面刷新恢复仍以 `Submission.status / current_stage` 为准。
