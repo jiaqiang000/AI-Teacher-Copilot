@@ -333,6 +333,16 @@ partial（部分正确）
 incorrect（错误）
 ```
 
+`performance` 是 `ProfileAlgorithmV1` 计算知识点画像时的规范输入，映射固定为：
+
+```text
+correct   → 1.0
+partial   → 0.5
+incorrect → 0.0
+```
+
+这个数值映射只存在于画像计算阶段，**不在 `GradingResult` 中新增 `performance_value` 字段**，避免同一事实保存两份。
+
 注意：
 
 > `performance = incorrect` 只说明学生在**当前这道题**上暴露了问题，不代表系统已经认定该知识点是学生的长期薄弱点。
@@ -1038,6 +1048,21 @@ subject（学科）
 question_type（题型）
 difficulty（数学难度；英语当前为空）
 ```
+
+与 `ProfileAlgorithmV1` 的输入关系固定为：
+
+```text
+score.rate
+→ Student Profile overview / difficulty_performance
+
+diagnosis.knowledge_points[].performance
+→ Knowledge Point mastery / recent_performance / trend / weak_point
+
+diagnosis.errors[].code + diagnosis.errors[].knowledge_point_key
+→ recurring_error / common_error
+```
+
+因此知识点 `mastery` 不允许直接拿整题 `score.rate` 代替；错误重复判断也必须基于稳定的 `(error_code, knowledge_point_key)` 组合，而不是自然语言描述。
 
 需要落库并用于展示、下钻、过程解释或追溯，但不直接作为长期画像核心聚合键：
 
