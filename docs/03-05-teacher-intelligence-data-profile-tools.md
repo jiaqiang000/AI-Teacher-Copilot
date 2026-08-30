@@ -1062,7 +1062,7 @@ fully graded student
 因此：
 
 ```text
-grading_student_count
+graded_student_count
 = fully graded students 数量
 ```
 
