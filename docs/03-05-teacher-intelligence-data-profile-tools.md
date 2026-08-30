@@ -61,6 +61,30 @@ LLM
 
 题库资源不是“某个学生发生了什么”的业务事实，也不是画像缓存；它是系统可反复检索和复用的教学资源。
 
+#### DeerFlow 数据职责边界
+
+DeerFlow 在本项目中承担 Agent Harness、Tool / Skill Runtime、Memory、HITL、Sub-Agent、Streaming 和 Trace 等基础设施，但不替代本节定义的教育业务数据层。
+
+```text
+MySQL / Redis Profile / Analysis
+= Teacher Copilot 教育业务事实与确定性派生学习状态
+
+DeerFlow Memory
+= 教师长期会话上下文
+
+DeerFlow RunEventStore / Langfuse
+= Agent 执行证据与 Trace
+```
+
+尤其必须区分：
+
+```text
+Redis Student Profile / Class Profile
+≠ DeerFlow Memory
+```
+
+Profile 由 `ProfileAlgorithmV1` 基于当前有效 MySQL 事实确定性计算，可以删除并重算；Memory 保存教师偏好、教学风格等长期上下文，不能成为学生成绩、掌握度或薄弱知识点的事实源。
+
 ---
 
 ### 3.2 MySQL 数据模型：业务事实 + 标准参考字典 + 题库资源
@@ -899,6 +923,8 @@ OR
 
 当前 MVP 不为画像刷新额外引入 MQ、定时任务或独立后台计算系统，使用“事实变化时失效 + 下次读取惰性重算”即可。
 
+再次明确：DeerFlow Memory 不参与上述 Profile 计算，也不保存 Student / Class Profile Snapshot。画像缓存只属于 Teacher Copilot Redis 数据层。
+
 ---
 
 ### 3.8 AnalysisCalculationV1
@@ -1036,7 +1062,7 @@ fully graded student
 因此：
 
 ```text
-graded_student_count
+grading_student_count
 = fully graded students 数量
 ```
 
@@ -1758,6 +1784,45 @@ list_class_homeworks（查询班级作业列表）
 
 它们只负责发现业务对象，不负责画像计算或学情分析。
 
+### DeerFlow Tool Runtime 复用边界
+
+本节定义的是 **Teacher Copilot 业务 Tool Contract**；真正的 Tool 注册、Schema 暴露、Agent 调用生命周期直接复用 DeerFlow Harness，不再自建第二套 Tool Registry。
+
+```text
+Teacher Lead Agent
+        ↓
+DeerFlow Tool Runtime
+        ↓
+Teacher Copilot Tool Adapter
+        ↓
+Service
+        ↓
+Repository
+        ↓
+MySQL / Redis
+```
+
+职责固定为：
+
+```text
+DeerFlow 负责：
+- ToolConfig 配置与 Tool group
+- BaseTool 装载
+- Tool Schema 暴露给 LLM
+- Agent Tool Calling Runtime
+- Runtime Context 传递
+
+Teacher Copilot 负责：
+- 本节定义的业务输入 / 输出 Contract
+- Service 业务逻辑
+- ProfileAlgorithmV1
+- AnalysisCalculationV1
+- 教师数据权限校验
+- Repository / MySQL / Redis
+```
+
+因此 Tool 层本身保持很薄，不在 DeerFlow Tool 函数中重新堆 SQL、Redis 和画像公式。
+
 ### 5.0 业务对象解析边界
 
 Teacher Agent 的正式业务 Tool 仍然使用明确的业务 ID 作为输入，例如：
@@ -1790,6 +1855,8 @@ question_id
 6. Teacher Agent 不得猜测 `student_id`、`class_id`、`homework_id` 或 `question_id`。
 
 例如教师说“第 8 题”时，系统先基于当前 `homework_id` 和 `Question.question_no = 8` 确定真实 `question_id`，再调用 `get_question_analysis`。
+
+Teacher Business Context 通过 DeerFlow `RunCreateRequest.context` 携带；但“把值放进 runtime context”不等于 LLM 自动可见，具体由 `TeacherBusinessContextMiddleware` 注入模型上下文。该 Middleware、Custom Agent 和 HITL 的完整实现统一见 `docs/06-07-业务驱动的设计.md`。
 
 业务对象解析属于正式 Tool Calling 前的参数准备，不改变 Tool 本身的职责，也不新增 Entity Resolution Tool / Skill / Agent。
 
@@ -2286,6 +2353,12 @@ search_question_bank
           ↓
 05 Teacher Agent Tools（教师 Agent 工具）
 │
+├── DeerFlow Tool Runtime
+│      ↓
+│   Teacher Copilot Tool Adapter
+│      ↓
+│   Service / Repository
+│
 ├── get_student_profile
 ├── get_student_grading_history
 ├── get_class_profile
@@ -2297,5 +2370,10 @@ search_question_bank
 └── search_question_bank → QuestionBankItem[]
           │
           ↓
-06–07 业务驱动的 Teacher Lead Agent + 按需 Multi-Agent
+06–07 DeerFlow Teacher Custom Agent + 按需 Multi-Agent
 ```
+
+本文件只确定教育业务数据、算法和 Tool Contract。DeerFlow Tool 注册、Skill Runtime、Custom Agent、Teacher Business Context Middleware、HITL 与 Sub-Agent 的详细工程接入分别统一见：
+
+- `docs/05-tool-skill.md`
+- `docs/06-07-业务驱动的设计.md`
