@@ -121,6 +121,45 @@ Never Guess ID（禁止猜测业务 ID）
 
 本项目不新增 Entity Resolution Tool（实体解析工具）、Entity Resolution Skill（实体解析技能）或 Entity Resolution Agent（实体解析智能体）。`ask_clarification` 属于 DeerFlow Harness 的内置能力，不计入 AI Teacher Copilot 的 9 个业务 Tool，因此当前 Tool 数量不发生变化。
 
+### 1.2 Profile Derived Facts Boundary（画像派生事实边界）
+
+以下字段不是 LLM 在 Skill 内临时判断出来的“分析意见”，而是 `ProfileAlgorithmV1（profile_v1）` 从 MySQL 当前有效 `GradingResult` 事实确定性计算出来的派生学习事实：
+
+```text
+Student Profile
+├── mastery
+├── recent_performance / recent_score_rate
+├── trend
+├── weak_points
+└── recurring_errors
+
+Class Profile
+├── avg_mastery
+├── weak_points
+├── common_errors
+└── attention_students
+```
+
+边界固定为：
+
+```text
+MySQL Grading Facts
+        ↓
+ProfileAlgorithmV1
+        ↓
+Profile Tool 返回派生事实
+        ↓
+Skill / Agent
+= 解释、组合、下钻证据、形成教学结论
+```
+
+因此：
+
+- Tool 不临时改阈值或重新定义画像算法。
+- Skill 不重新计算 `mastery`，也不自行把某次错误升级成 `weak_point / recurring_error`。
+- Skill 可以使用 `get_student_grading_history` 等事实 Tool 下钻证据，但证据用于解释画像结论，不用于另起一套画像判定标准。
+- 如果要修改 `< 0.60`、`attempt_count >= 3`、最近 14/28 天等规则，只修改 `docs/03-05-teacher-intelligence-data-profile-tools.md` 中的 `ProfileAlgorithmV1`，而不是在多个 Skill 中分别修改。
+
 复杂教学任务通过 Skill 组织多个 Tool：
 
 ```text
@@ -182,18 +221,29 @@ get_student_grading_history（查询批改历史：获取真实历史作答与�
 ```text
 get_student_profile
         ↓
-识别 weak_points（薄弱知识点）
+直接读取 ProfileAlgorithmV1 已判定的：
+weak_points（长期薄弱知识点）
 recurring_errors（重复错误）
 trend（学习趋势）
         ↓
 get_student_grading_history
         ↓
-使用历史题目事实验证画像结论
+查找对应历史题目、得分、performance 和 error 作为解释证据
         ↓
-区分：
+按确定性画像语义组织诊断：
+
 长期薄弱
+= 对应知识点存在于 profile.weak_points
+
 近期退步
+= 对应 overview / knowledge point 的 profile.trend = declining
+
+重复错误
+= 对应 (error_code, knowledge_point_key) 存在于 profile.recurring_errors
+
 偶发错误
+= 历史批改事实中出现错误
+  但未进入 profile.weak_points / profile.recurring_errors
         ↓
 输出学生诊断
 ```
@@ -209,7 +259,7 @@ get_student_grading_history
 诊断结论
 ```
 
-该 Skill 的核心约束是：画像用于定位问题，Grading History（批改历史）用于提供证据，不能只根据画像结论直接生成诊断。
+该 Skill 的核心约束是：`ProfileAlgorithmV1` 负责“是否长期薄弱 / 是否重复 / 趋势如何”的判定，Grading History（批改历史）负责提供事实证据和解释。Skill 不根据单次历史记录重新覆盖画像结论。
 
 ---
 
@@ -229,14 +279,14 @@ get_student_profile（查询学生画像：必要时下钻重点学生的长期�
 ```text
 get_class_profile
         ↓
-分析：
-weak_points（薄弱知识点）
-common_errors（常见错误）
-attention_students（重点关注学生）
+直接读取 ProfileAlgorithmV1 已生成的：
+weak_points（班级长期薄弱知识点）
+common_errors（班级常见错误）
+attention_students（长期重点关注学生）
 trend（学习趋势）
         ↓
 必要时 get_student_profile
-下钻重点学生
+下钻重点学生的长期画像与原因
         ↓
 输出班级学情诊断
 ```
@@ -256,7 +306,9 @@ trend（学习趋势）
 
 ```text
 class-learning-analysis
-= 班级长期状态
+= 解释和组织 Class Profile 中的长期画像事实
+= 可以下钻学生证据
+= 不重新覆盖 ProfileAlgorithmV1 的 weak / attention 判断
 
 homework-review
 = 某一次具体作业
