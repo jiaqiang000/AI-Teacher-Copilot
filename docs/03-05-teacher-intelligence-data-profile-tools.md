@@ -543,6 +543,12 @@ Question.source_question_bank_item_id = qb_001
 
 本节及后续 Profile / Analysis 中出现的 `knowledge_point_key / common_error_codes / error_code`，均指标准 Taxonomy 中可落库的 `level = 2` 编码；需要大类统计时通过标准字典父级关系向上聚合。
 
+当前算法版本固定为：
+
+```text
+algorithm_version = profile_v1
+```
+
 ```text
 StudentProfile（学生画像）
 │
@@ -551,40 +557,55 @@ StudentProfile（学生画像）
 │   ├── subject（学科）
 │   ├── generated_at（生成时间）
 │   ├── source_data_until（事实数据截止时间）
-│   └── algorithm_version（算法版本）
+│   └── algorithm_version（算法版本；当前为 profile_v1）
 │
 ├── overview（整体表现）
 │   ├── attempt_count（累计作答次数）
 │   ├── avg_score_rate（历史平均得分率）
-│   ├── recent_score_rate（近期得分率）
-│   └── trend（学习趋势）
+│   ├── recent_score_rate（近期得分率，可为 null）
+│   └── trend（学习趋势；证据不足时为 null）
 │
 ├── knowledge_points[]（知识点画像）
 │   ├── knowledge_point_key（知识点标识）
 │   ├── attempt_count（作答次数）
 │   ├── mastery（掌握度）
-│   ├── recent_performance（近期表现）
-│   ├── trend（学习趋势）
+│   ├── recent_performance（近期表现，可为 null）
+│   ├── trend（学习趋势；证据不足时为 null）
 │   ├── last_practiced_at（最近练习时间）
 │   └── common_error_codes[]（常见错误类型）
 │
 ├── weak_points[]（薄弱知识点）
 │   ├── knowledge_point_key（知识点标识）
 │   ├── mastery（掌握度）
-│   ├── trend（学习趋势）
+│   ├── trend（学习趋势；可为 null）
 │   └── evidence_count（证据数量）
 │
 ├── recurring_errors[]（重复错误）
 │   ├── error_code（错误类型）
 │   ├── knowledge_point_key（关联知识点）
 │   ├── occurrence_count（累计出现次数）
-│   ├── recent_occurrence_count（近期出现次数）
+│   ├── recent_occurrence_count（最近 28 天出现次数）
 │   └── last_occurred_at（最近出现时间）
 │
-└── difficulty_performance（不同难度表现）
-    ├── easy（简单）
-    ├── medium（中等）
-    └── hard（困难）
+└── difficulty_performance（不同难度表现；英语为 null）
+    ├── easy
+    │   ├── attempt_count
+    │   ├── avg_score_rate
+    │   └── recent_score_rate
+    ├── medium
+    │   ├── attempt_count
+    │   ├── avg_score_rate
+    │   └── recent_score_rate
+    └── hard
+        ├── attempt_count
+        ├── avg_score_rate
+        └── recent_score_rate
+```
+
+数学返回上述 `easy / medium / hard` 三组统计；英语作文当前 `difficulty = null`，因此：
+
+```text
+difficulty_performance = null
 ```
 
 ---
@@ -601,30 +622,30 @@ ClassProfile（班级画像）
 │   ├── subject（学科）
 │   ├── generated_at（生成时间）
 │   ├── source_data_until（事实数据截止时间）
-│   └── algorithm_version（算法版本）
+│   └── algorithm_version（算法版本；当前为 profile_v1）
 │
 ├── overview（整体表现）
 │   ├── student_count（学生总数）
 │   ├── active_student_count（有效学习学生数）
 │   ├── avg_score_rate（历史平均得分率）
-│   ├── recent_score_rate（近期得分率）
-│   └── trend（学习趋势）
+│   ├── recent_score_rate（近期得分率，可为 null）
+│   └── trend（学习趋势；证据不足时为 null）
 │
 ├── knowledge_points[]（知识点画像）
 │   ├── knowledge_point_key（知识点标识）
 │   ├── participating_student_count（参与学生数）
 │   ├── attempt_count（总作答次数）
 │   ├── avg_mastery（平均掌握度）
-│   ├── recent_performance（近期表现）
+│   ├── recent_performance（近期表现，可为 null）
 │   ├── weak_student_count（薄弱学生数）
-│   ├── trend（学习趋势）
+│   ├── trend（学习趋势；证据不足时为 null）
 │   └── common_error_codes[]（常见错误）
 │
 ├── weak_points[]（班级薄弱知识点）
 │   ├── knowledge_point_key（知识点标识）
 │   ├── avg_mastery（平均掌握度）
 │   ├── weak_student_count（薄弱学生数）
-│   └── trend（学习趋势）
+│   └── trend（学习趋势；可为 null）
 │
 ├── common_errors[]（班级常见错误）
 │   ├── error_code（错误类型）
@@ -635,8 +656,8 @@ ClassProfile（班级画像）
 └── attention_students[]（重点关注学生）
     ├── student_id（学生ID）
     ├── weak_point_count（薄弱知识点数量）
-    ├── recent_performance（近期表现）
-    ├── trend（学习趋势）
+    ├── recent_score_rate（近期整体得分率，可为 null）
+    ├── trend（学习趋势；可为 null）
     └── reason_codes[]（关注原因）
 ```
 
@@ -800,7 +821,7 @@ Student Profile（学生画像）与 Class Profile（班级画像）的生成方
 ```text
 MySQL Facts
     ↓
-确定性聚合算法
+ProfileAlgorithmV1
     ↓
 Redis Snapshot
 ```
@@ -815,85 +836,457 @@ MySQL
 └──→ Class Profile（班级画像）
 ```
 
+为保证重新提交后画像不会继续引用已删除的旧批改结果，缓存失效规则固定为：
+
+```text
+新的当前 GradingResult 成功写入
+OR
+重新提交时旧 GradingResult 被删除
+        ↓
+删除 / 失效对应 Student Profile 缓存
++
+删除 / 失效对应 Class Profile 缓存
+        ↓
+下次 Tool 读取 Redis Miss
+        ↓
+从 MySQL 当前有效事实重新计算
+```
+
+当前 MVP 不为画像刷新额外引入 MQ、定时任务或独立后台计算系统，使用“事实变化时失效 + 下次读取惰性重算”即可。
+
 ---
 
 ## 4. 学习画像算法与长期个性化
 
-### 4.1 核心画像算法
+### 4.1 ProfileAlgorithmV1
 
-画像计算固定包含以下 7 类能力：
-
-```text
-1. performance（表现值）标准化
-2. mastery（掌握度）
-3. recent_performance（近期表现）
-4. trend（学习趋势）
-5. weak_point（薄弱知识点）
-6. recurring_error（重复错误）
-7. class aggregation（班级聚合）
-```
-
-#### performance（表现值）标准化
-
-将 `GradingResult` 中不同题型、不同得分形式转换为画像计算可使用的统一表现值，为后续掌握度、近期表现和班级聚合提供统一输入。
-
-#### mastery（掌握度）
+`ProfileAlgorithmV1` 是当前 Student Profile / Class Profile 的唯一确定性画像算法定义：
 
 ```text
-历史知识点表现
-+
-时间权重
-+
-题目难度权重
-↓
-mastery（掌握度）
+algorithm_version = profile_v1
 ```
 
-`mastery（掌握度）` 不直接等于历史正确率。
+Agent、Skill 和 Tool 不得在运行时自行修改这些公式或阈值。
 
-#### recent_performance（近期表现）
+#### 4.1.1 输入与有效事实范围
 
-使用独立近期窗口计算，只表示学生或班级近期状态，不与长期 `mastery（掌握度）` 混为同一个指标。
-
-#### trend（学习趋势）
+画像只使用 MySQL 中**当前有效、成功完成**的批改结果：
 
 ```text
-近期窗口
-vs
-上一窗口
-↓
-improving（提升）
-stable（稳定）
-declining（下降）
+Submission.status = SUCCEEDED
+AND
+当前 GradingResult 仍然存在
 ```
 
-#### weak_point（薄弱知识点）
-
-薄弱知识点必须同时满足：
+以下数据不进入画像：
 
 ```text
-mastery（掌握度）较低
-+
-足够历史证据
+PENDING
+RUNNING
+FAILED
+重新提交时已删除的旧 GradingResult
 ```
 
-单次错误不能直接判定为长期薄弱知识点。
-
-#### recurring_error（重复错误）
-
-重复错误依据：
+三类输入职责严格分开：
 
 ```text
-相同 error_code（错误类型编码）
-+
-多次出现
-+
-相同或相关 knowledge_point（知识点）
+GradingResult.score.rate
+→ overview / difficulty_performance
+
+grading_result_knowledge_point.performance
+→ knowledge point mastery / recent_performance / trend / weak_point
+
+grading_result_error.error_code + knowledge_point_key
+→ recurring_error / common_error
 ```
 
-#### class aggregation（班级聚合）
+知识点画像不得用整题 `score.rate` 代替 `performance`。
 
-Class Profile（班级画像）直接从 MySQL 中的班级历史事实进行聚合，不通过 Student Profile（学生画像）二次聚合作为事实计算链。
+#### 4.1.2 时间窗口
+
+所有时间窗口相对于本次画像计算的 `as_of`（默认等于 `generated_at`）确定：
+
+```text
+recent window
+= (as_of - 14 days, as_of]
+
+previous window
+= (as_of - 28 days, as_of - 14 days]
+
+recurring error recent window
+= (as_of - 28 days, as_of]
+```
+
+测试环境必须固定 `as_of`，避免同一 Fixture 在不同日期产生不同结果。
+
+#### 4.1.3 performance 标准化
+
+`GradingResult.diagnosis.knowledge_points[].performance` 固定映射为：
+
+```text
+correct   → 1.0
+partial   → 0.5
+incorrect → 0.0
+```
+
+记一次知识点观察的标准表现值为 `p_i`。
+
+#### 4.1.4 Student Overview
+
+对某个 `student_id + subject`：
+
+```text
+attempt_count
+= 当前有效成功 GradingResult 数量
+
+avg_score_rate
+= 所有当前有效 GradingResult.score.rate 的算术平均
+
+recent_score_rate
+= recent window 内 score.rate 的算术平均
+= recent window 无数据时为 null
+```
+
+Student Overview 的 `trend` 同样采用 4.1.6 的趋势规则，但输入信号使用整题 `score.rate`，不是知识点 `performance`。
+
+#### 4.1.5 Knowledge Point Mastery
+
+对某个 `student_id + subject + knowledge_point_key` 的每一次知识点观察：
+
+```text
+p_i = performance 映射值
+w_i = time_weight_i × difficulty_weight_i
+```
+
+时间权重固定为：
+
+```text
+距 as_of <= 14 天      → 1.0
+15–28 天               → 0.8
+> 28 天                → 0.6
+```
+
+难度权重固定为：
+
+```text
+Math easy    → 0.8
+Math medium  → 1.0
+Math hard    → 1.2
+English null → 1.0
+```
+
+掌握度公式：
+
+```text
+mastery
+= Σ(p_i × w_i) / Σ(w_i)
+```
+
+示例：
+
+```text
+最近 easy correct
+p1 = 1.0, w1 = 1.0 × 0.8 = 0.8
+
+20 天前 medium partial
+p2 = 0.5, w2 = 0.8 × 1.0 = 0.8
+
+40 天前 hard incorrect
+p3 = 0.0, w3 = 0.6 × 1.2 = 0.72
+
+mastery
+= (1.0×0.8 + 0.5×0.8 + 0×0.72) / (0.8+0.8+0.72)
+= 1.2 / 2.32
+= 0.5172
+```
+
+`attempt_count` 为该知识点当前有效历史观察次数；`last_practiced_at` 为最近一次该知识点观察时间。
+
+#### 4.1.6 Recent Performance 与 Trend
+
+Knowledge Point 的 `recent_performance`：
+
+```text
+= recent window 内该知识点 p_i 的算术平均
+```
+
+这里**不使用时间权重和难度权重**；它只表达最近两周学生在该知识点上的直接近期状态。
+
+```text
+recent window 无该知识点观察
+→ recent_performance = null
+```
+
+趋势计算：
+
+```text
+recent_value
+= recent window 内信号平均值
+
+previous_value
+= previous window 内信号平均值
+```
+
+只有当两个窗口都至少有 `2` 个观察时才计算：
+
+```text
+recent_count < 2
+OR previous_count < 2
+→ trend = null
+```
+
+否则：
+
+```text
+delta = recent_value - previous_value
+
+delta >= 0.10  → improving
+delta <= -0.10 → declining
+其他            → stable
+```
+
+应用位置：
+
+```text
+Student overview trend
+→ 信号 = score.rate
+
+Student knowledge point trend
+→ 信号 = performance 映射值 p_i
+```
+
+Class Profile 的 trend 由 4.1.10 定义的班级聚合信号按同一阈值计算。
+
+#### 4.1.7 Weak Point
+
+某学生某知识点只有同时满足以下条件才进入 `weak_points`：
+
+```text
+attempt_count >= 3
+AND
+mastery < 0.60
+```
+
+因此：
+
+```text
+attempt_count = 1 或 2
+即使 mastery 很低
+也不能判定为长期 weak_point
+```
+
+字段规则：
+
+```text
+weak_points[].evidence_count
+= 对应知识点 attempt_count
+```
+
+排序固定为：
+
+```text
+mastery ASC
+→ evidence_count DESC
+→ knowledge_point_key ASC
+```
+
+#### 4.1.8 Recurring Error
+
+重复错误的统计主键固定为精确二元组：
+
+```text
+(error_code, knowledge_point_key)
+```
+
+不再使用“相同或相关知识点”这种不可执行判断。
+
+某二元组进入 `recurring_errors` 的条件：
+
+```text
+最近 28 天 recent_occurrence_count >= 2
+```
+
+字段定义：
+
+```text
+occurrence_count
+= 当前有效全部历史中的累计出现次数
+
+recent_occurrence_count
+= 最近 28 天出现次数
+
+last_occurred_at
+= 最近一次出现时间
+```
+
+Student `knowledge_points[].common_error_codes` 只统计与该知识点关联的错误，并仅保留：
+
+```text
+历史 occurrence_count >= 2
+```
+
+按：
+
+```text
+occurrence_count DESC
+→ error_code ASC
+```
+
+最多返回 `3` 个错误编码。
+
+#### 4.1.9 Difficulty Performance
+
+仅数学计算：
+
+```text
+difficulty_performance.easy / medium / hard
+```
+
+每个难度分别计算：
+
+```text
+attempt_count
+= 该难度当前有效 GradingResult 数量
+
+avg_score_rate
+= 该难度全部 score.rate 平均
+
+recent_score_rate
+= recent window 内该难度 score.rate 平均
+= recent window 无数据时 null
+```
+
+英语作文当前 `difficulty = null`，因此：
+
+```text
+difficulty_performance = null
+```
+
+#### 4.1.10 Class Aggregation
+
+Class Profile 仍然**直接从 MySQL 当前有效事实计算**：
+
+```text
+MySQL Facts
+→ ProfileAlgorithmV1
+→ Class Profile
+```
+
+实现时可以在内存中计算与 Student Profile 同公式的“每学生中间值”，但不得读取 Redis Student Profile 作为 Class Profile 的事实输入。
+
+班级整体：
+
+```text
+student_count
+= class_student 中当前班级学生数量
+
+active_student_count
+= 至少有 1 个当前有效成功 GradingResult 的学生数量
+```
+
+为避免做题次数多的学生对班级均值产生过度影响：
+
+```text
+class overview.avg_score_rate
+= 每个 active student 的个人 avg_score_rate 再取算术平均
+
+class overview.recent_score_rate
+= 对 recent_score_rate 非 null 的学生再取算术平均
+= 无任何近期学生数据时 null
+```
+
+对某个知识点：
+
+```text
+participating_student_count
+= 至少有 1 条该知识点有效观察的学生数量
+
+attempt_count
+= 全班该知识点有效观察总次数
+
+avg_mastery
+= participating students 的个人 knowledge point mastery 算术平均
+
+recent_performance
+= 对个人 recent_performance 非 null 的 participating students 取算术平均
+= 无近期数据时 null
+
+weak_student_count
+= 满足个人 weak_point 规则的学生数量
+```
+
+班级知识点趋势按“每学生窗口均值 → 班级窗口均值”的方式得到 recent / previous 信号，再使用 4.1.6 的 `±0.10` 阈值；任一窗口没有足够班级证据时 `trend = null`。
+
+Class `common_errors[]` 按精确 `(error_code, knowledge_point_key)` 聚合：
+
+```text
+affected_student_count
+= 至少出现过该错误二元组的学生数量
+
+occurrence_count
+= 全班当前有效历史出现总次数
+```
+
+#### 4.1.11 Class Weak Point 与 Attention Students
+
+某知识点进入 Class `weak_points` 需要先满足：
+
+```text
+participating_student_count >= 3
+```
+
+并且满足以下任一条件：
+
+```text
+avg_mastery < 0.60
+OR
+weak_student_count / participating_student_count >= 0.30
+```
+
+Class Profile 的长期 `attention_students` 只基于长期画像规则产生。候选原因码固定为：
+
+```text
+LOW_RECENT_SCORE
+= recent_score_rate != null AND recent_score_rate < 0.60
+
+DECLINING_TREND
+= overview.trend = declining
+
+MULTIPLE_WEAK_POINTS
+= weak_point_count >= 2
+
+RECURRING_ERROR
+= recurring_errors 非空
+```
+
+命中任一原因即成为候选。
+
+最多返回 Top 10，排序固定为：
+
+```text
+reason_codes 数量 DESC
+→ recent_score_rate ASC（null 排最后）
+→ weak_point_count DESC
+→ student_id ASC
+```
+
+这里的 `ClassProfile.attention_students` 是长期画像关注对象，不等于某一周 Teacher Lead Agent 基于本周 Homework Analysis 再筛选出来的“周度重点学生”。
+
+#### 4.1.12 精度、空值与输出规则
+
+以下数值对外输出统一四舍五入到 `4` 位小数：
+
+```text
+mastery
+avg_mastery
+avg_score_rate
+recent_score_rate
+recent_performance
+```
+
+所有阈值判断必须使用**未四舍五入的原始计算值**，不能先 round 再判断 `< 0.60 / ±0.10`。
+
+没有足够数据时使用 `null` 表达“无法判断”，不要自动写成 `0` 或 `stable`。
 
 ---
 
@@ -1013,13 +1406,25 @@ difficulty_performance（不同难度表现）
 StudentProfile（学生画像）
 ```
 
+返回的：
+
+```text
+basic.algorithm_version = profile_v1
+```
+
 **数据来源**
 
 ```text
-Redis
+ProfileService
+↓
+Redis Student Profile Snapshot
 ↓ Redis Miss
-MySQL 重算
+ProfileAlgorithmV1
+↓
+MySQL 当前有效事实
 ```
+
+Tool 不现场临时发明 mastery / weak_point / recurring_error 规则；这些派生字段只能来自 `ProfileAlgorithmV1`。
 
 ---
 
@@ -1108,13 +1513,25 @@ attention_students（重点关注学生）
 ClassProfile（班级画像）
 ```
 
+返回的：
+
+```text
+basic.algorithm_version = profile_v1
+```
+
 **数据来源**
 
 ```text
-Redis
+ProfileService
+↓
+Redis Class Profile Snapshot
 ↓ Redis Miss
-MySQL 重算
+ProfileAlgorithmV1
+↓
+MySQL 当前有效班级事实
 ```
+
+Class Profile 的计算不读取 Redis Student Profile 作为事实源；Tool 也不允许 Agent 自行重新计算或覆盖 `avg_mastery / weak_points / attention_students` 等确定性画像结论。
 
 边界：`get_class_profile` 回答班级长期学情，不用于枚举完整学生名单；需要班级成员列表时使用 `list_class_students`。
 
@@ -1417,6 +1834,7 @@ search_question_bank
           ↓
 04 学习画像算法与长期个性化
 │
+├── ProfileAlgorithmV1（profile_v1）
 ├── mastery（掌握度）
 ├── recent_performance（近期表现）
 ├── trend（学习趋势）
