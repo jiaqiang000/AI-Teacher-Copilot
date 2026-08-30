@@ -691,25 +691,56 @@ HomeworkAnalysis（作业分析）
 │   └── completion_rate（完成率）
 │
 ├── performance（成绩表现）
+│   ├── graded_student_count（完整批改学生数）
 │   ├── avg_score_rate（平均得分率）
 │   └── score_distribution（成绩分布）
+│       ├── below_60
+│       ├── from_60_to_79
+│       ├── from_80_to_89
+│       └── from_90_to_100
 │
 ├── knowledge_points[]（知识点表现）
 │   ├── knowledge_point_key（知识点标识）
-│   ├── avg_performance（平均表现）
-│   └── weak_student_count（薄弱学生数）
+│   ├── participating_student_count（参与学生数）
+│   ├── avg_performance（本次平均表现）
+│   └── low_performance_student_count（本次低表现学生数）
 │
 ├── questions[]（题目表现）
 │   ├── question_id（题目ID）
 │   ├── question_no（题号）
+│   ├── attempt_count（有效作答人数）
 │   ├── avg_score_rate（平均得分率）
+│   ├── error_student_count（出现结构化错误的学生数）
 │   ├── error_rate（错误率）
 │   └── common_error_codes[]（常见错误）
 │
-└── attention_students[]（重点关注学生）
+└── attention_students[]（本次作业即时异常候选学生）
+    ├── student_id（学生ID）
+    ├── homework_score_rate（本次作业得分率；未完整批改时可为 null）
+    ├── reason_codes[]（即时异常原因）
+    └── related_question_ids[]（关联异常题目）
 ```
 
-Homework Analysis（作业分析）默认从 MySQL 即时计算，不作为长期画像持久化。
+Homework Analysis（作业分析）默认从 MySQL 当前有效事实即时计算，不作为长期画像持久化。
+
+其中：
+
+```text
+low_performance_student_count
+= 只表示本次 Homework 中该知识点表现较低的学生数量
+
+attention_students
+= 只表示本次 Homework 的即时异常候选学生
+```
+
+它们均不等于 `ProfileAlgorithmV1` 的长期：
+
+```text
+weak_point
+ClassProfile.attention_students
+```
+
+具体计算口径统一由 3.8 `AnalysisCalculationV1` 定义。
 
 ---
 
@@ -737,18 +768,30 @@ QuestionAnalysis（题目分析）
 ├── homework_id（作业ID）
 ├── class_id（班级ID）
 │
-├── attempt_count（作答人数）
+├── attempt_count（有效作答人数）
 ├── avg_score_rate（平均得分率）
+├── error_student_count（出现结构化错误的学生数）
 ├── error_rate（错误率）
 │
 ├── knowledge_points[]（涉及知识点）
+│   ├── knowledge_point_key（知识点标识）
+│   ├── participating_student_count（参与学生数）
+│   ├── avg_performance（本题平均表现）
+│   └── low_performance_student_count（本题低表现学生数）
 │
 ├── common_errors[]（常见错误）
 │   ├── error_code（错误类型）
+│   ├── knowledge_point_key（关联知识点）
 │   ├── occurrence_count（出现次数）
 │   └── affected_student_count（涉及学生数）
 │
 └── representative_errors[]（典型错误证据）
+    ├── student_id（学生ID）
+    ├── error_code（错误类型）
+    ├── knowledge_point_key（关联知识点）
+    ├── raw_type（本次原始错误语义）
+    ├── description（错误描述）
+    └── evidence（真实错误证据）
 ```
 
 题目分析用于作业分析后的进一步下钻：
@@ -762,6 +805,8 @@ Question Analysis（题目分析）
         ↓
 继续下钻具体错误和学生
 ```
+
+所有字段的确定性计算规则统一由 3.8 `AnalysisCalculationV1` 定义。
 
 ---
 
@@ -853,6 +898,380 @@ OR
 ```
 
 当前 MVP 不为画像刷新额外引入 MQ、定时任务或独立后台计算系统，使用“事实变化时失效 + 下次读取惰性重算”即可。
+
+---
+
+### 3.8 AnalysisCalculationV1
+
+`AnalysisCalculationV1` 是当前 Homework Analysis / Question Analysis 的唯一确定性即时聚合规则。
+
+```text
+MySQL 当前有效事实
+        ↓
+AnalysisCalculationV1
+        ↓
+HomeworkAnalysis / QuestionAnalysis
+        ↓
+Teacher Agent Tool
+```
+
+LLM、Skill 和 Agent 不得在运行时重新定义本节公式或阈值。
+
+#### 3.8.1 有效事实范围
+
+成绩、知识点和错误统计只使用：
+
+```text
+Submission.status = SUCCEEDED
+AND
+当前 GradingResult 仍然存在
+```
+
+以下数据不进入这些统计：
+
+```text
+PENDING
+RUNNING
+FAILED
+重新提交时已删除的旧 GradingResult
+```
+
+本节不重新定义 `completion.assigned_student_count / submitted_student_count / completion_rate` 的业务口径。
+
+#### 3.8.2 Question 基础统计
+
+对指定 `class_id + homework_id + question_id`：
+
+```text
+attempt_count
+= 存在当前有效 SUCCEEDED GradingResult 的不同学生数
+
+avg_score_rate
+= 所有当前有效 GradingResult.score.rate 的算术平均
+= attempt_count = 0 时为 null
+
+error_student_count
+= diagnosis.errors[] 非空的不同学生数
+
+error_rate
+= error_student_count / attempt_count
+= attempt_count = 0 时为 null
+```
+
+`error_student_count` 不使用 `score.rate < 1` 判断。是否存在结构化错误统一以 `diagnosis.errors[]` 为准。
+
+#### 3.8.3 performance 标准化
+
+Analysis 与 Profile 使用相同的单次表现值映射：
+
+```text
+correct   → 1.0
+partial   → 0.5
+incorrect → 0.0
+```
+
+但 Analysis 不使用 Profile 的时间权重和难度权重。
+
+#### 3.8.4 Question Knowledge Point
+
+对当前题某个 `knowledge_point_key`：
+
+```text
+participating_student_count
+= 至少有 1 条该知识点 observation 的学生数
+
+avg_performance
+= participating students 的 performance 数值算术平均
+
+low_performance_student_count
+= performance < 0.60 的学生数
+```
+
+这里的 `low_performance_student_count` 只表示当前题表现，不产生长期 `weak_point`。
+
+#### 3.8.5 Homework Knowledge Point
+
+同一个知识点可能出现在 Homework 的多道 Question。
+
+先对每个：
+
+```text
+student_id + homework_id + knowledge_point_key
+```
+
+计算：
+
+```text
+student_homework_kp_performance
+= 该学生本次 Homework 中
+  该知识点所有当前有效 performance 数值的算术平均
+```
+
+然后：
+
+```text
+participating_student_count
+= 至少有 1 条该知识点有效 observation 的学生数
+
+avg_performance
+= participating students 的
+  student_homework_kp_performance
+  再取算术平均
+
+low_performance_student_count
+= student_homework_kp_performance < 0.60
+  的学生数
+```
+
+这里同样不得把一次作业的低表现直接升级为长期 `weak_point`。
+
+#### 3.8.6 Homework 成绩表现
+
+只有 Homework 中每一道 Question 都存在该学生当前有效 SUCCEEDED GradingResult 时，该学生才属于：
+
+```text
+fully graded student
+```
+
+因此：
+
+```text
+graded_student_count
+= fully graded students 数量
+```
+
+对一个 fully graded student：
+
+```text
+student_homework_score_rate
+=
+Σ GradingResult.score.earned
+/
+Σ GradingResult.score.max
+```
+
+Homework：
+
+```text
+avg_score_rate
+= 所有 fully graded students 的
+  student_homework_score_rate
+  算术平均
+```
+
+如果：
+
+```text
+graded_student_count = 0
+```
+
+则：
+
+```text
+avg_score_rate = null
+```
+
+#### 3.8.7 Score Distribution
+
+只统计 fully graded students。
+
+```text
+[0.00, 0.60)
+→ below_60
+
+[0.60, 0.80)
+→ from_60_to_79
+
+[0.80, 0.90)
+→ from_80_to_89
+
+[0.90, 1.00]
+→ from_90_to_100
+```
+
+每个字段保存学生人数。
+
+#### 3.8.8 Common Errors
+
+QuestionAnalysis `common_errors[]` 按精确二元组：
+
+```text
+(error_code, knowledge_point_key)
+```
+
+聚合。
+
+```text
+occurrence_count
+= 当前题该错误二元组的 Error 事实出现次数
+
+affected_student_count
+= 出现过该错误二元组的不同学生数
+```
+
+排序：
+
+```text
+affected_student_count DESC
+→ occurrence_count DESC
+→ error_code ASC
+→ knowledge_point_key ASC
+```
+
+HomeworkAnalysis `questions[].common_error_codes[]` 是题目摘要，只按 `error_code` 聚合：
+
+```text
+affected_student_count DESC
+→ occurrence_count DESC
+→ error_code ASC
+```
+
+最多返回 Top 3。
+
+HomeworkAnalysis `questions[]` 默认按：
+
+```text
+question_no ASC
+```
+
+返回。
+
+#### 3.8.9 Representative Errors
+
+QuestionAnalysis 从已经排好序的 `common_errors[]` 中取 Top 3 error group。
+
+每个 error group 返回 1 条真实 `grading_result_error` 证据。
+
+候选学生按：
+
+```text
+当前题 score.rate ASC
+→ student_id ASC
+```
+
+选择。
+
+返回：
+
+```text
+student_id
+error_code
+knowledge_point_key
+raw_type
+description
+evidence
+```
+
+所有 representative error 必须来自真实 MySQL Error 事实，不允许 LLM 生成。
+
+#### 3.8.10 Homework Attention Students
+
+`HomeworkAnalysis.attention_students` 只表示当前 Homework 的即时异常候选，不等于长期 `ClassProfile.attention_students`，也不等于最终 `weekly_attention_students`。
+
+原因码固定为：
+
+```text
+LOW_HOMEWORK_SCORE
+HIGH_ERROR_QUESTION
+```
+
+`LOW_HOMEWORK_SCORE`：
+
+```text
+fully graded
+AND
+student_homework_score_rate < 0.60
+```
+
+首先定义：
+
+```text
+high_error_question
+=
+QuestionAnalysis.error_rate != null
+AND
+QuestionAnalysis.error_rate >= 0.50
+```
+
+某学生如果：
+
+```text
+在 high_error_question 上
+diagnosis.errors[] 非空
+```
+
+则：
+
+```text
+reason_codes += HIGH_ERROR_QUESTION
+related_question_ids += 当前 question_id
+```
+
+`homework_score_rate`：
+
+```text
+fully graded
+→ student_homework_score_rate
+
+不是 fully graded
+→ null
+```
+
+`attention_students[]` 返回全部命中候选，不在 Analysis 层截断 Top N。
+
+排序固定为：
+
+```text
+reason_codes 数量 DESC
+→ homework_score_rate ASC（null 排最后）
+→ student_id ASC
+```
+
+#### 3.8.11 即时与长期语义边界
+
+必须严格区分：
+
+```text
+Homework / Question low_performance
+= 当前一次作业 / 当前一道题表现
+
+HomeworkAnalysis.attention_students
+= 当前一次作业即时异常候选
+
+ProfileAlgorithmV1 weak_point
+= 长期薄弱知识点
+
+ClassProfile.attention_students
+= 长期画像重点关注学生
+
+weekly_attention_students
+= Teacher Lead Agent 综合长期画像
+  + 本周多份 Homework Analysis
+  后形成的周度业务结果
+```
+
+AnalysisCalculationV1 不产生长期画像结论。
+
+#### 3.8.12 精度与空值
+
+以下数值对外输出统一四舍五入到 4 位小数：
+
+```text
+avg_score_rate
+student_homework_score_rate
+avg_performance
+error_rate
+```
+
+所有阈值判断必须使用未四舍五入的原始值。
+
+没有有效数据时使用：
+
+```text
+null
+```
+
+不得自动写成 `0`。
 
 ---
 
@@ -1660,9 +2079,25 @@ HomeworkAnalysis（作业分析）
 **数据来源**
 
 ```text
-MySQL
-↓
-即时聚合
+MySQL 当前有效事实
+        ↓
+AnalysisCalculationV1
+        ↓
+HomeworkAnalysis
+```
+
+Tool 必须直接返回 `AnalysisCalculationV1` 的确定性计算结果。
+
+Teacher Agent / Skill 不得重新计算或覆盖：
+
+```text
+graded_student_count
+avg_score_rate
+score_distribution
+avg_performance
+low_performance_student_count
+error_rate
+attention_students
 ```
 
 ---
@@ -1691,8 +2126,9 @@ QuestionAnalysis（题目分析）
 
 ```text
 question_no（题号）
-attempt_count（作答人数）
+attempt_count（有效作答人数）
 avg_score_rate（平均得分率）
+error_student_count（出现结构化错误的学生数）
 error_rate（错误率）
 knowledge_points（涉及知识点）
 common_errors（常见错误）
@@ -1702,10 +2138,14 @@ representative_errors（典型错误证据）
 **数据来源**
 
 ```text
-MySQL
-↓
-即时聚合
+MySQL 当前有效事实
+        ↓
+AnalysisCalculationV1
+        ↓
+QuestionAnalysis
 ```
+
+`attempt_count / avg_score_rate / error_student_count / error_rate / knowledge_points / common_errors / representative_errors` 均由后端确定性计算或选择，不允许 LLM 从自然语言结果中估算。
 
 ---
 
