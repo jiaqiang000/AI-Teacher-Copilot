@@ -178,6 +178,39 @@ Answer
 
 Skill 不新增业务事实，不修改 03–05 已确定的数据模型，也不重新实现 Tool 中的数据查询逻辑。
 
+### 1.3 Analysis Derived Facts Boundary（即时分析派生事实边界）
+
+Homework Analysis（作业分析）和 Question Analysis（题目分析）中的统计字段同样不是 Skill / Agent 临时计算出来的分析意见，而是 `AnalysisCalculationV1` 从 MySQL 当前有效事实确定性计算出来的即时派生事实。
+
+```text
+MySQL 当前有效 Grading Facts
+        ↓
+AnalysisCalculationV1
+        ↓
+get_homework_analysis / get_question_analysis
+        ↓
+Skill / Agent
+= 解释、比较、下钻、形成教学结论
+```
+
+因此：
+
+- Skill 不重新计算 `avg_score_rate / error_rate / avg_performance / score_distribution`。
+- Skill 不重新定义 `HomeworkAnalysis.attention_students`。
+- Skill 不把 `low_performance_student_count` 直接解释成长期 `weak_point`。
+- Skill 可以把 Homework / Question Analysis 与 Class Profile 进行对照，从而判断“本次问题”和“长期问题”是否一致。
+- 如果要修改 Analysis 的公式或即时阈值，只修改 `docs/03-05-teacher-intelligence-data-profile-tools.md` 中的 `AnalysisCalculationV1`。
+
+这里必须区分：
+
+```text
+AnalysisCalculationV1
+= 指定 Homework / Question 的即时状态
+
+ProfileAlgorithmV1
+= 学生 / 班级长期学习状态
+```
+
 ---
 
 ## 2. 5 个 Skill 的完整设计
@@ -318,13 +351,13 @@ homework-review
 
 ### 2.3 `homework-review`（作业讲评分析）
 
-目标：分析某个班级的一次具体作业，定位高错题、共性错误、薄弱知识点和重点学生，并形成讲评优先级与讲评建议。
+目标：分析某个班级的一次具体作业，定位高错题、本次共性错误、本次低表现知识点和本次即时异常学生，再结合 Class Profile 判断这些问题是否属于班级长期薄弱问题，并形成讲评优先级与讲评建议。
 
 主要 Tool：
 
 ```text
-get_homework_analysis（查询作业分析：分析一次作业的整体表现和关键问题）
-get_question_analysis（查询题目分析：下钻分析某道题的错误率和错误原因）
+get_homework_analysis（查询作业分析：获取当前作业确定性即时分析结果）
+get_question_analysis（查询题目分析：下钻高错题的真实错误与典型证据）
 get_class_profile（查询班级画像：判断当前问题是否属于班级长期薄弱问题）
 ```
 
@@ -333,20 +366,40 @@ get_class_profile（查询班级画像：判断当前问题是否属于班级长
 ```text
 get_homework_analysis
         ↓
-分析完成率 / 成绩 / 知识点 / 题目表现
+直接读取 AnalysisCalculationV1 已计算的：
+完成情况
+成绩表现
+本次低表现知识点
+questions[].error_rate
+attention_students
         ↓
-找出关键高错题
+从 questions[] 中选择：
+error_rate 非 null 且 > 0
+按 error_rate DESC
+取 Top 3 关键高错题
         ↓
-get_question_analysis
+对关键高错题调用 get_question_analysis
         ↓
-分析具体错误原因
+读取：
+common_errors
+representative_errors
+knowledge_points
         ↓
 get_class_profile
         ↓
-判断：
-本次偶发问题
+对照：
+本次低表现知识点
 vs
-班级长期薄弱问题
+ClassProfile.weak_points
+
+本次即时异常学生
+vs
+ClassProfile.attention_students
+        ↓
+区分：
+本次偶发 / 即时问题
+vs
+长期薄弱问题
         ↓
 生成讲评方案
 ```
@@ -356,14 +409,27 @@ vs
 ```text
 作业总体表现
 高错题
-共性错误
-薄弱知识点
-重点学生
+本次共性错误
+本次低表现知识点
+长期薄弱知识点
+本次即时异常学生
 讲评优先级
 讲评建议
 ```
 
-该 Skill 是 Homework Analysis（作业分析）与 Class Profile（班级画像）之间的连接层：既分析当前作业，又判断问题是否具有长期性。
+该 Skill 是 Homework Analysis 与 Class Profile 之间的连接层。
+
+其中：
+
+```text
+HomeworkAnalysis
+= 当前一次作业即时事实
+
+ClassProfile
+= 班级长期画像事实
+```
+
+Skill 负责解释和对照两者，但不得重新计算 AnalysisCalculationV1，也不得把一次低表现直接升级成长期 weak_point。
 
 ---
 
