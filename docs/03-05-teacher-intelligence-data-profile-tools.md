@@ -313,9 +313,9 @@ REASONING_ERROR（推理错误）            level=1
 
 ```text
 GRAMMAR_ERROR（语法错误）              level=1
-├── TENSE_ERROR（时态错误）            level=2
+├── TENSE_ERROR（时态错误）             level=2
 ├── SUBJECT_VERB_ERROR（主谓一致错误） level=2
-├── ARTICLE_ERROR（冠词错误）          level=2
+├── ARTICLE_ERROR（冠词错误）           level=2
 └── GRAMMAR_OTHER（其他语法错误）      level=2 / is_other=true
 ```
 
@@ -558,6 +558,8 @@ Question.source_question_bank_item_id = qb_001
 ```
 
 当前 MVP 的 Question Bank 只要求系统预置 / Seed Data + MySQL 条件查询，不建设教师题库管理、题库审核、题库版本、自动生成、去重、向量检索或 RAG。
+
+因此当前前端也不建设独立 Question Bank Management 页面。Question Bank 的教师侧产品入口只作为 `04 · Homework Authoring` 中“从题库添加题目”的选择 Drawer / Dialog；Teacher Agent 通过 `search_question_bank` 使用同一 `QuestionBankService`。
 
 ---
 
@@ -831,6 +833,32 @@ Question Analysis（题目分析）
 ```
 
 所有字段的确定性计算规则统一由 3.8 `AnalysisCalculationV1` 定义。
+
+### 3.6.1 Frontend / Figma Consumption Mapping
+
+当前 Profile / Analysis / Question Bank 数据与教师前端的消费关系固定为：
+
+| 业务数据 | Figma | 页面职责 |
+|---|---|---|
+| `ClassProfile` | `02 · Class Detail` | 展示班级长期整体状态、薄弱点、常见错误、重点学生 |
+| `StudentProfile` | `03 · Student Profile` | 展示单学生长期状态、知识点、趋势、重复错误 |
+| `HomeworkAnalysis` | `05 · Homework Analysis` | 展示一次作业完成、成绩、知识点和题目表现 |
+| `QuestionAnalysis` | `05 · Homework Analysis` 的 Question Analysis Drawer / Detail | 从某道高错题下钻错误和典型证据 |
+| `QuestionBankItem` | `04 · Homework Authoring` 的 Question Bank Drawer | 从系统预置题库选择并 Copy 成 Question |
+
+上述页面只消费本文件已经定义的确定性数据。Frontend 不重新计算：
+
+```text
+mastery
+weak_point
+trend
+completion_rate
+avg_score_rate
+error_rate
+attention_students
+```
+
+Figma 页面布局不得反向修改 `ProfileAlgorithmV1 / AnalysisCalculationV1`。
 
 ---
 
@@ -1861,6 +1889,19 @@ question_id
 
 例如教师说“第 8 题”时，系统先基于当前 `homework_id` 和 `Question.question_no = 8` 确定真实 `question_id`，再调用 `get_question_analysis`。
 
+如果当前页面已经明确当前学生和学科，例如 `03 · Student Profile`：
+
+```text
+current_student_id
++
+current_subject
+
+→ 直接作为业务对象解析 Context 使用
+→ 不再为了确定“这个学生”而重复调用 list_class_students
+```
+
+完整字段定义与页面映射统一由 `docs/06-07-业务驱动的设计.md` 中的 `TeacherBusinessContext` 负责。
+
 Teacher Business Context 通过 DeerFlow `RunCreateRequest.context` 携带；但“把值放进 runtime context”不等于 LLM 自动可见，具体由 `TeacherBusinessContextMiddleware` 注入模型上下文。该 Middleware、Custom Agent 和 HITL 的完整实现统一见 `docs/06-07-业务驱动的设计.md`。
 
 业务对象解析属于正式 Tool Calling 前的参数准备，不改变 Tool 本身的职责，也不新增 Entity Resolution Tool / Skill / Agent。
@@ -2382,3 +2423,7 @@ search_question_bank
 
 - `docs/05-tool-skill.md`
 - `docs/06-07-业务驱动的设计.md`
+
+前端页面、Figma 与上述数据结构的消费映射统一见：
+
+- `docs/ui-figma-and-deerflow-frontend.md`
