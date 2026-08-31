@@ -1793,7 +1793,7 @@ Teacher Lead Agent
         ↓
 DeerFlow Tool Runtime
         ↓
-Teacher Copilot Tool Adapter
+Teacher Copilot Tool（@tool / BaseTool）
         ↓
 Service
         ↓
@@ -1807,21 +1807,26 @@ MySQL / Redis
 ```text
 DeerFlow 负责：
 - ToolConfig 配置与 Tool group
-- BaseTool 装载
-- Tool Schema 暴露给 LLM
+- 根据 ToolConfig.use 加载 BaseTool
+- Tool Schema 暴露
 - Agent Tool Calling Runtime
 - Runtime Context 传递
 
-Teacher Copilot 负责：
-- 本节定义的业务输入 / 输出 Contract
-- Service 业务逻辑
+Teacher Copilot Tool（@tool / BaseTool）负责：
+- 承接业务输入 / 输出 Contract
+- 获取当前 Runtime 用户与业务上下文
+- 调用 TeacherPermissionService
+- 调用对应业务 Service
+- 返回结构化结果
+
+Teacher Copilot Service / Repository 负责：
+- 教育业务逻辑
 - ProfileAlgorithmV1
 - AnalysisCalculationV1
-- 教师数据权限校验
-- Repository / MySQL / Redis
+- MySQL / Redis 数据访问
 ```
 
-因此 Tool 层本身保持很薄，不在 DeerFlow Tool 函数中重新堆 SQL、Redis 和画像公式。
+Teacher Copilot Tool 保持轻量，主要承担 Agent Runtime 与教育业务 Service 之间的调用边界；画像算法、统计计算和数据访问继续由 Service / Repository 完成。
 
 ### 5.0 业务对象解析边界
 
@@ -2355,7 +2360,7 @@ search_question_bank
 │
 ├── DeerFlow Tool Runtime
 │      ↓
-│   Teacher Copilot Tool Adapter
+│   Teacher Copilot Tool（@tool / BaseTool）
 │      ↓
 │   Service / Repository
 │
