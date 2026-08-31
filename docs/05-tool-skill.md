@@ -862,7 +862,8 @@ def get_student_profile(
 
     # 当前登录用户、角色等可信身份信息来自 DeerFlow / Backend Runtime Context，
     # 不由 LLM 在 Tool 参数中提供。
-    # Tool Adapter 先完成业务权限校验，再调用 Service。
+    # Tool 获取可信 Runtime 身份，调用 TeacherPermissionService 完成业务权限校验，
+    # 再调用对应业务 Service。
 
     profile = profile_service.get_student_profile(
         student_id=student_id,
@@ -895,7 +896,7 @@ Tool 层只负责：
 ```text
 DeerFlow Tool Runtime
 ↓
-Teacher Copilot Tool Adapter
+Teacher Copilot Tool（@tool / BaseTool）
 ↓
 Service
 ↓
@@ -903,6 +904,15 @@ Repository
 ↓
 Redis / MySQL / RAG
 ```
+
+Teacher Copilot Tool 是 Agent 可直接调用的教育业务能力入口。
+
+每个 Tool 负责：
+- 接收业务参数
+- 获取可信 Runtime 身份与上下文
+- 调用 TeacherPermissionService
+- 调用对应 Service
+- 返回结构化 Tool Result
 
 其中 RAG 属于后续 `search_teaching_materials` 的规划数据源，不进入当前阶段实现。
 
@@ -995,7 +1005,7 @@ student_id = stu_001
         ↓
 DeerFlow / Backend Runtime Context
         ↓
-Teacher Copilot Tool Adapter
+Teacher Copilot Tool
         ↓
 TeacherPermissionService
         ↓
@@ -1516,7 +1526,19 @@ tools:
    必须指向最终可以被 DeerFlow 动态加载的 BaseTool / @tool 对象
 ```
 
-Teacher Copilot 不再维护自己的 Tool Registry；Tool 的发现和加载直接由 DeerFlow `get_available_tools()` 完成。
+Teacher Copilot Tool 的发现与加载统一进入 DeerFlow `get_available_tools()` 链路。
+
+加载关系为：
+
+```text
+ToolConfig.use
+        ↓
+teacher_copilot.tools.* 中的最终 @tool / BaseTool
+        ↓
+DeerFlow get_available_tools()
+        ↓
+Teacher Lead Agent Tool Set
+```
 
 ### 14.2 SKILL.md 使用 DeerFlow 原生格式
 
@@ -1726,14 +1748,15 @@ skills/public/
 职责边界：
 
 ```text
-Tool Adapter
-= Agent 能调用什么业务能力
+Tool（@tool / BaseTool）
+= Agent 可调用的教育业务能力入口
+= 承接 Tool Schema、Runtime 身份与上下文、权限校验和 Service 调用
 
 Schema
 = Tool 输入参数和返回结果结构
 
 Service
-= 业务逻辑如何执行
+= 教育业务逻辑如何执行
 
 Repository
 = 数据如何读取和写入
