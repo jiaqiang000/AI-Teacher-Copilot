@@ -112,7 +112,7 @@ Never Guess ID（禁止猜测业务 ID）
 
 其中：
 
-- 当前页面或会话 Context 已经提供 `class_id / homework_id / question_id` 时直接使用，不重复查询。
+- 当前页面或会话 Context 已经提供 `student_id / class_id / homework_id / question_id / subject` 时直接使用，不重复查询。
 - 需要发现班级中的学生时复用 `list_class_students`。
 - 需要发现班级中的作业时复用 `list_class_homeworks`。
 - “第 8 题”通过当前 `homework_id + question_no = 8` 映射到真实 `question_id`。
@@ -120,6 +120,8 @@ Never Guess ID（禁止猜测业务 ID）
 - Teacher Agent 不得根据姓名、题号等自然语言自行猜测 `student_id / class_id / homework_id / question_id`。
 
 本项目不新增 Entity Resolution Tool（实体解析工具）、Entity Resolution Skill（实体解析技能）或 Entity Resolution Agent（实体解析智能体）。`ask_clarification` 属于 DeerFlow Harness 的内置能力，不计入 AI Teacher Copilot 的 9 个业务 Tool，因此当前 Tool 数量不发生变化。
+
+具体哪个 Figma 页面提供哪些 Business Context，不属于 Tool Contract 本身；页面映射统一由 `docs/06-07-业务驱动的设计.md` 和 `docs/ui-figma-and-deerflow-frontend.md` 定义。
 
 ### 1.2 Profile Derived Facts Boundary（画像派生事实边界）
 
@@ -964,6 +966,33 @@ QuestionBankService
 
 因此 UI 题库搜索与 Agent 题库搜索共享同一套过滤语义和数据源，不维护两套查询逻辑。
 
+同样的 Service 复用原则适用于 Profile / Analysis 页面：
+
+```text
+Teacher Business Page
+→ 普通业务 API
+→ Profile / Analysis Service
+→ Repository
+
+Teacher Agent
+→ DeerFlow Tool Runtime
+→ Teacher Tool
+→ 同一个 Profile / Analysis Service
+→ Repository
+```
+
+普通业务页面不能为了读取数据而调用 Teacher Agent Tool。
+
+```text
+Agent Tool
+= Agent Runtime 能力入口
+
+Business API
+= 普通前端页面能力入口
+
+二者共享 Service / Repository，而不是互相调用。
+```
+
 ---
 
 ## 9. data_source（数据源）
@@ -1448,6 +1477,8 @@ QuestionBankService
 ```
 
 不额外新增一个面向教师 UI 的 Agent Tool。
+
+当前 Figma 中对应 `04 · Homework Authoring` 内的 Question Bank Drawer，不建设独立题库管理页面。
 
 ---
 
