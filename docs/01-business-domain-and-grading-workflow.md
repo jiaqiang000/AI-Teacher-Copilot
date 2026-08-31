@@ -341,6 +341,45 @@ status = PUBLISHED
 学生可见
 ```
 
+#### UI / Figma 对应与职责边界
+
+对应 Figma：
+
+```text
+04 · Homework Authoring
+```
+
+该页面负责组织以下教师操作：
+
+```text
+Homework 基础信息
+Question 列表 / 排序
+添加 Question
+├── 手动输入
+├── 上传题目图片
+└── 从 Question Bank 选择
+
+Question 预览 / 修改
+数学 difficulty 预判结果确认
+发布 Homework
+```
+
+职责边界固定为：
+
+```text
+Figma
+= 定义这些操作如何组织和展示
+
+本节
+= 定义 DRAFT / PUBLISHED
++ Question 创建来源
++ difficulty
++ max_score
++ 发布校验等业务规则
+```
+
+Question Bank 在当前 MVP 中作为 Homework Authoring 内的选择 Drawer / Dialog 使用，不建设独立的教师题库管理页面。
+
 #### 路径 A：手动输入题目
 
 ```text
@@ -487,6 +526,21 @@ Homework.published_at = 当前时间
 `Submission` 表示：
 
 > **学生针对一道题当前有效的答案，同时也是这份当前答案的批改状态记录。**
+
+学生侧 UI 对应：
+
+```text
+07 · Student Homework
+→ 查看当前 Homework
+→ 查看 Question 列表与当前作答 / 批改状态
+→ 选择 Question
+
+08 · Student Grading
+→ 针对选中的 Question 上传当前答案
+→ 展示当前 Submission 批改过程与最终结果
+```
+
+`07 / 08` 只是同一 `Submission` 业务模型在不同交互阶段的页面表现，不增加新的业务对象或 `GradingTask`。
 
 例如小明做 q001：
 
@@ -1247,6 +1301,39 @@ GradingResultMessage
 → 数学原图错误定位（如有）
 ```
 
+对应 Figma：
+
+```text
+08 · Student Grading
+```
+
+同一个 Student Grading 交互面按 Submission 状态展示不同内容：
+
+```text
+未提交
+→ 上传答案
+
+PENDING / RUNNING
+→ Student Image Message
+→ GradingProgressMessage
+
+FAILED
+→ 失败信息 + 允许重新提交
+
+SUCCEEDED
+→ GradingResultMessage
+```
+
+Math / English 不拆成两套路由或两套独立页面：
+
+```text
+math_detail
+→ 数学结果 Variant
+
+english_essay_detail
+→ 英语作文结果 Variant
+```
+
 当前不直接套用：
 
 ```text
@@ -1702,6 +1789,20 @@ height = (y2 - y1) * scale_y
 
 如果整个公式是一个 OCR Block，即使错误只发生在其中一个字符，当前版本也框选整个公式 Block；不增加字符级 OCR 定位或额外视觉模型。
 
+对应 Figma：
+
+```text
+08 · Student Grading 的 Math Result 状态
+```
+
+错误框属于 Student Grading 当前结果区的一部分，不创建独立“错误定位页面”。Figma 只定义原图 + 错误框 + 步骤反馈的展示方式；实际坐标仍严格来自：
+
+```text
+error_block_ids
+→ OCRResult.layout_details
+→ bbox2d
+```
+
 ---
 
 ### 5.4 English Essay Grading Workflow
@@ -2070,3 +2171,7 @@ GradingResultMessage
 - `GradingResult` 是当前 Submission 成功完成 Workflow 后对外输出的唯一最终批改结果。
 - `MySQL` 保存业务事实、OCR 证据、Taxonomy 标准参考字典和题库资源，为后续学生画像、班级学情分析和 Teacher Agent 提供可信数据基础。
 - 学生实时进度继续展示在 DeerFlow Chat 中：复用聊天容器、Message Timeline、ChainOfThought 类步骤 UI 和 StreamBridge 基础能力；`grading.*` 业务事件不伪装成 `AIMessage / reasoning / tool_calls`，页面刷新恢复仍以 `Submission.status / current_stage` 为准。
+
+页面信息架构、Figma Frame 与 DeerFlow Frontend 组件复用映射统一见：
+
+- `docs/ui-figma-and-deerflow-frontend.md`
