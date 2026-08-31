@@ -233,6 +233,41 @@ GradingResult
 
 因此不因为接入 DeerFlow 而在当前 GradingResult Schema 中新增 `deerflow_run_id / thread_id / langfuse_trace_id` 等 Harness 字段；需要做执行链排查和 Eval 时，通过评测运行记录建立关联即可。
 
+### 2.8 UI / Figma Consumption Boundary
+
+当前学生最终批改结果对应 Figma：
+
+```text
+08 · Student Grading
+```
+
+消费关系固定为：
+
+```text
+GradingResult common fields
+→ 总分 / 总体反馈 / 结构化诊断
+
+math_detail
+→ Math Result Variant
+→ 动态步骤分
+→ OCR Block 错误定位
+
+english_essay_detail
+→ English Essay Result Variant
+→ Content / Organization / Grammar / Vocabulary
+→ language_errors / evidence
+```
+
+Figma 不定义 `GradingResult` Schema。如果未来 UI 确实需要新增业务字段，顺序必须是：
+
+```text
+1. 先修改本文件的 GradingResult Contract
+2. 再修改后端实现
+3. 最后同步 Figma
+```
+
+不得为了某个 Card / Layout 临时向 `GradingResult` 增加纯展示字段。数学和英语仍然共用本文件定义的统一顶层 Contract，只在 `08 · Student Grading` 中展示不同 Result Variant。
+
 ---
 
 ## 3. 顶层结构
