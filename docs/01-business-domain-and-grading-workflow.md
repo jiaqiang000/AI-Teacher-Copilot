@@ -411,7 +411,7 @@ Question.image_url
 
 #### DeerFlow 复用落地：题目图片上传
 
-教师端上传题目图片时，只复用 DeerFlow 已有的前端文件选择、上传交互和文件校验 primitives，不把 DeerFlow Thread Upload 当成 Question 的正式业务存储。
+教师端上传题目图片时，当前优先复用 DeerFlow 已确认可用的前端文件选择、上传交互和文件校验 primitives；业务资产存储方式在实现阶段继续核对 DeerFlow 现有能力。
 
 ```text
 直接复用：
@@ -425,11 +425,11 @@ Question.image_url
 - 正式业务资产存储
 - Question.image_url
 
-明确不复用：
+当前暂未直接采用：
 - /api/threads/{thread_id}/uploads/... 作为 Question.image_url
 ```
 
-原因是 DeerFlow Thread Upload 属于聊天线程的 user-data 生命周期，而 `Question.image_url` 属于 Homework 的业务资产。删除 / 清理 Thread 文件不能影响已经发布的 Question。
+原因是当前代码阅读下 DeerFlow Thread Upload 更偏向聊天线程的 user-data 生命周期，而 `Question.image_url` 属于 Homework 的业务资产。具体实现时仍需继续检查 DeerFlow Upload 的存储与生命周期能力，满足业务资产要求时优先复用。
 
 #### 路径 C：从 Question Bank 添加
 
@@ -546,7 +546,7 @@ Submission
 
 #### Submission 图片资产与 DeerFlow Upload 边界
 
-`Submission.image_url` 是当前学生答案的正式业务资产引用，不使用 DeerFlow Thread Upload 临时文件地址作为 Source of Truth。
+`Submission.image_url` 是当前学生答案的正式业务资产引用。当前暂不直接将 DeerFlow Thread Upload 临时文件地址作为 Source of Truth；实现阶段继续检查其存储与生命周期能力，满足业务资产要求时优先复用。
 
 ```text
 Student Frontend
@@ -560,7 +560,7 @@ SubmissionAssetService【本项目】
 Submission.image_url
 ```
 
-这样即使聊天 Thread 的 user-data 被单独清理，也不会导致当前 Submission 原图丢失。DeerFlow Upload 在这里复用的是上传交互和校验能力，不承担教育业务资产生命周期。
+当前设计保证聊天 Thread 的 user-data 清理不能导致当前 Submission 原图丢失；最终存储实现仍以编码阶段对 DeerFlow Upload 能力的进一步检查结果为准。
 
 当前参赛项目采用简化的重新提交规则：
 
@@ -1110,7 +1110,7 @@ GradingResult 依赖 DeerFlow Run output 才能成为业务事实
 
 `Submission.status / current_stage` 始终是批改状态和页面恢复的 Source of Truth。
 
-##### 5.2.8.2 后端 Streaming：复用 StreamBridge，不复用 Run 生命周期
+##### 5.2.8.2 后端 Streaming：当前优先复用 StreamBridge
 
 学生批改事件继续使用已经定义的 `grading.*` 业务协议，后端复用 DeerFlow `StreamBridge` 的 publish / subscribe / end 等流式基础能力：
 
@@ -1145,11 +1145,11 @@ Browser
 - Submission SSE Endpoint
 - grading_sse_consumer
 
-明确不直接复用：
+当前暂未直接采用：
 - DeerFlow Gateway 针对 Agent Run 的 sse_consumer / RunManager 生命周期
 ```
 
-原因是 DeerFlow 原生 Run SSE 同时绑定 `RunRecord / RunManager / Agent Run lifecycle`；如果直接套用，会重新把 Submission 变成 Agent Run。当前只复用 StreamBridge 这一层基础设施。
+当前代码阅读下，DeerFlow 原生 Run SSE 与 `RunRecord / RunManager / Agent Run lifecycle` 绑定较深。实现阶段继续检查 RunManager / Gateway SSE 是否可在保持 Submission 业务状态独立的前提下进一步复用。
 
 ##### 5.2.8.3 前端：复用 Chat / ChainOfThought primitives，新增 Grading Adapter
 
@@ -1247,13 +1247,13 @@ GradingResultMessage
 → 数学原图错误定位（如有）
 ```
 
-明确不复用：
+当前不直接套用：
 
 ```text
 MessageGroup 的 AIMessage / reasoning / tool_calls 转换逻辑
 ```
 
-原因是 `OCR / PARSING / GRADING` 是确定的业务 Workflow 阶段，不是 Agent Tool Call。
+原因是 `OCR / PARSING / GRADING` 是确定的业务 Workflow 阶段，不是 Agent Tool Call。实现时继续检查 MessageGroup 的消息转换和扩展机制，能通过 Adapter 复用则优先复用。
 
 ##### 5.2.8.4 页面刷新与事件重连边界
 
@@ -2059,7 +2059,7 @@ GradingResultMessage
 - 教师自行创建数学 Question 时由 `Qwen3.5-4B` 预判 difficulty 并允许教师发布前修正；题库题直接复制已有 difficulty。
 - 英语作文 `Question.max_score` 固定为 `20`，`Question / QuestionBankItem` 不保存 Rubric；正式批改统一使用系统内置 `EnglishEssayRubricV1`。
 - `Submission` 表示学生对某一道题当前有效的真实答案，同时保存当前批改 `status / current_stage`；同一 `student_id + question_id` 只保留一条。
-- `Question.image_url / Submission.image_url` 是 Teacher Copilot 正式业务资产引用；只复用 DeerFlow 上传 UI / validation primitives，不把 Thread Upload 当业务资产 Source of Truth。
+- `Question.image_url / Submission.image_url` 是 Teacher Copilot 正式业务资产引用；当前优先复用 DeerFlow 已确认的上传 UI / validation 能力，Thread Upload 是否可进一步承担业务资产生命周期在实现阶段继续检查，满足要求时优先复用。
 - `PENDING / RUNNING` 时拒绝重复提交；`SUCCEEDED / FAILED` 后复用同一 Submission 重新提交。
 - `OCRResult` 持久化学生 Submission 的 OCR 核心结构化识别证据；数学批改使用 `layout_details` 的 Block 顺序、内容和坐标。
 - `Grading Workflow` 负责 OCR、结构化解析、确定性题型路由，以及数学或英语作文的具体批改过程。
