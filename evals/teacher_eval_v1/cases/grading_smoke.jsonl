@@ -1,0 +1,9 @@
+# 批改链路 Smoke 用例(参考文档 08 附录 B G-SUB-*)
+{"case_id": "G-SUB-001", "name": "第一次提交与状态转换", "assert": {"before": null, "after_status": "PENDING", "final": "SUCCEEDED", "stage": "COMPLETED"}}
+{"case_id": "G-SUB-003", "name": "批改中禁止重复提交", "assert": {"status_in": "RUNNING", "expected_http": 409, "code": "SUBMISSION_GRADING_IN_PROGRESS", "no_new_task": true}}
+{"case_id": "G-SUB-004", "name": "完成后复用 Submission 重交", "assert": {"status_from": "SUCCEEDED", "submission_id_same": true, "old_results_deleted": true, "reset": "PENDING/QUEUED"}}
+{"case_id": "G-SUB-005", "name": "数学 current_stage 顺序", "assert": {"order": ["QUEUED","OCR","PARSING","GRADING","ASSEMBLING_RESULT","COMPLETED"], "difficulty_read": "Question.difficulty"}}
+{"case_id": "G-SUB-007", "name": "SSE 实时进度事件", "assert": {"event_type": "grading.stage.started", "contains_submission_id": true, "stages": ["complete","active","pending"]}}
+{"case_id": "G-SUB-008", "name": "DeerFlow Chat 实时过程展示", "assert": {"message_order": ["Student Image Message","GradingProgressMessage"], "not_pretend": "AIMessage/reasoning/tool_calls"}}
+{"case_id": "G-SUB-009", "name": "页面刷新恢复", "assert": {"source": "Submission.status/current_stage", "not_reset_to_QUEUED": true, "re_subscribe": "/events"}}
+{"case_id": "G-SUB-011", "name": "数学错误 Block 原图定位", "assert": {"source": "math_detail.steps[].error_block_ids -> OCRResult.layout_details bbox2d", "scale": "按实际展示尺寸", "multiple_blocks": "分别显示", "forbidden": "字符级定位/猜坐标"}}

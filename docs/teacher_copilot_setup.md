@@ -60,6 +60,24 @@ cd frontend && npm install && npm run dev
 2. MySQL/Redis 实例(未提供时默认 SQLite + 禁用 Redis)
 3. Figma 设计文件访问权限(UI 对照用,非硬依赖)
 
+
+## 6b. 评测与验收(参考 quickstart 场景 H)
+
+```bash
+cd backend
+# 确定性算法门禁(Profile/Analysis,不依赖 LLM)
+python3 -m evals.runtime.run --gate profile_algorithm
+python3 -m evals.runtime.run --gate analysis_calculation
+```
+门禁结果:Profile 6/6、Analysis 5/5(已实测通过)。
+
+## 6c. 关键待办与卡点(宪法 VII)
+
+1. **图片公网 URL**:学生上传图片需先传至阿里云 OSS 等对象存储,取公网链接后
+   传入 OCR(见 models/clients/ocr.py 待办注释与 tasks.md Notes)。
+2. **前端运行**:完整前端需 `cd frontend && npm install && npm run dev`
+   (本次未执行 npm install,页面为 MVP 演示级,按 Figma 信息架构实现)。
+
 ## 6. 前端页面(对照 Figma 设计稿,宪法 VIII)
 
 Teacher 01-06 / Student 07-08 共 8 页,见 plan.md 前端设计基准节。

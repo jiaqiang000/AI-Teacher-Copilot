@@ -96,3 +96,7 @@ extensions:
         tools:
           - get_class_profile
           - get_student_profile
+
+# ===== Memory(教师长期上下文,复用 DeerFlow Memory Runtime)=====
+memory:
+  mode: middleware

@@ -1,0 +1,6 @@
+# 出题 Smoke 用例(参考文档 08 附录 A)
+{"case_id": "A-001", "name": "手动创建数学题", "assert": {"subject": "math", "difficulty_from": "预判", "source_bank_id": null}}
+{"case_id": "A-002", "name": "上传数学题图片", "assert": {"create_ocr_result_for_submission": false, "save": ["content", "image_url", "difficulty"]}}
+{"case_id": "A-003", "name": "从题库添加数学题", "assert": {"copy_difficulty": true, "no_reclassify": true, "source_recorded": true, "later_bank_change_no_effect": true}}
+{"case_id": "A-004", "name": "发布 Homework", "assert": {"pre_checks": ["至少一题", "题号唯一", "content非空", "max_score>0", "数学难度非空", "英语max=20", "学科一致"], "after": "PUBLISHED", "不再修改": true}}
+{"case_id": "A-005", "name": "英语作文固定 Rubric", "assert": {"subject": "english", "question_type": "essay", "difficulty": null, "max_score": 20, "no_custom_rubric": true}}
