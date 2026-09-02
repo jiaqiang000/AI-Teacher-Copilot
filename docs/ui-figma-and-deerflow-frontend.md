@@ -1,4 +1,5 @@
 # AI Teacher Copilot：UI、Figma 与 DeerFlow Frontend 复用映射
+这紧接着下面是8张img，也就是对应的figma图片，一定要看，这是优先级最高的，看了才能看后面的文字内容
 
 <img width="961" height="631" alt="image" src="https://github.com/user-attachments/assets/386ab9d4-41ae-4841-a308-b00f531b303a" />
 
