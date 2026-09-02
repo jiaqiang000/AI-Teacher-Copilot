@@ -5,6 +5,10 @@ SDK:zai-sdk(ZhipuAiClient.layout_parsing.create)。
 - 响应:md_results + layout_details(List[List[LayoutDetail]])
   LayoutDetail 字段:index/label/bbox_2d/content/height/width
 - 密钥未配置时走 mock(返回单 Block 结构),保证本地链路可演示
+
+【待办】公网图片 URL(2026-09-02 用户确认方案):智谱服务器仅能访问公网
+可下载 URL;本地文件/base64 对简单图返回空。学生上传图片须先传至
+阿里云 OSS 等对象存储并取得公网链接,再作为 file 参数传入(见 tasks.md 待办)。
 """
 
 from __future__ import annotations
