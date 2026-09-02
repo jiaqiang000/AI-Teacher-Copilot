@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, Integer, String, Text, UniqueConstraint, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.teacher_copilot.db.engine import Base
 
@@ -42,6 +42,11 @@ class Submission(Base):
         DateTime, server_default=func.now(), onupdate=func.now()
     )
 
+    # 关联批改结果(US3/US4 分析用)
+    _grading_result_rows: Mapped[list["GradingResult"]] = relationship(
+        back_populates="submission", lazy="selectin"
+    )
+
 
 class OcrResult(Base):
     """学生作答图片的 OCR 识别证据(当前 Submission 最多一条)。"""
@@ -52,7 +57,7 @@ class OcrResult(Base):
     )
 
     ocr_result_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    submission_id: Mapped[str] = mapped_column(String(64))
+    submission_id: Mapped[str] = mapped_column(String(64), ForeignKey("submission.submission_id"))
     model: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(16), default="SUCCEEDED")
     md_results: Mapped[str | None] = mapped_column(Text, nullable=True)  # 整体 Markdown 结果
@@ -70,7 +75,7 @@ class GradingResult(Base):
     )
 
     grading_result_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    submission_id: Mapped[str] = mapped_column(String(64))
+    submission_id: Mapped[str] = mapped_column(String(64), ForeignKey("submission.submission_id"))
     subject: Mapped[str] = mapped_column(String(16))
     question_type: Mapped[str] = mapped_column(String(32))
     difficulty: Mapped[str | None] = mapped_column(String(16), nullable=True)  # 英语 null
@@ -87,6 +92,16 @@ class GradingResult(Base):
     execution_meta: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
+    # 诊断子表关系(selectinload 用)
+    _kp_rows: Mapped[list["GradingResultKnowledgePoint"]] = relationship(
+        back_populates="_grading_result", lazy="selectin"
+    )
+    _error_rows: Mapped[list["GradingResultError"]] = relationship(
+        back_populates="_grading_result", lazy="selectin"
+    )
+    # 关联提交(用于按学生/作业过滤)
+    submission: Mapped["Submission"] = relationship(back_populates="_grading_result_rows")
+
 
 class GradingResultKnowledgePoint(Base):
     """某次批改实际识别的标准知识点事实(level=2 key + raw 语义)。"""
@@ -94,12 +109,14 @@ class GradingResultKnowledgePoint(Base):
     __tablename__ = "grading_result_knowledge_point"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    grading_result_id: Mapped[str] = mapped_column(String(64))
+    grading_result_id: Mapped[str] = mapped_column(String(64), ForeignKey("grading_result.grading_result_id"))
     knowledge_point_key: Mapped[str] = mapped_column(String(128))
     name: Mapped[str | None] = mapped_column(String(256), nullable=True)  # 字典补齐,冗余展示
     raw_name: Mapped[str] = mapped_column(Text)  # 本次实际语义,必须保存
     performance: Mapped[str] = mapped_column(String(16))  # correct/partial/incorrect
     evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    _grading_result: Mapped["GradingResult"] = relationship(back_populates="_kp_rows")
 
 
 class GradingResultError(Base):
@@ -108,10 +125,12 @@ class GradingResultError(Base):
     __tablename__ = "grading_result_error"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    grading_result_id: Mapped[str] = mapped_column(String(64))
+    grading_result_id: Mapped[str] = mapped_column(String(64), ForeignKey("grading_result.grading_result_id"))
     error_code: Mapped[str] = mapped_column(String(64))
     type_name: Mapped[str | None] = mapped_column(String(256), nullable=True)  # 字典补齐
     raw_type: Mapped[str] = mapped_column(Text)  # 本次实际语义
     knowledge_point_key: Mapped[str] = mapped_column(String(128))  # 关联知识点
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    _grading_result: Mapped["GradingResult"] = relationship(back_populates="_error_rows")
