@@ -81,6 +81,9 @@ export default function CopilotChatPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             assistant_id: "teacher-copilot",
+            // 允许委派 Sub-Agent(diagnosis-worker/practice-worker/reviewer),
+            // 是否委派仍由模型按 SOUL 规则决定(Single-Agent First)
+            config: { subagent_enabled: true },
             input: { messages: [{ role: "user", content: text }] },
           }),
         })
