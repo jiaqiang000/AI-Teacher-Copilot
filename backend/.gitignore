@@ -35,3 +35,7 @@ config.yaml
 # pytest --basetemp workaround dirs (sandbox tmp_path permission)
 .pytest_tmp/
 .pytest_tmp_run/
+
+# Teacher Copilot 真实密钥(勿提交)
+.env
+tc-data/

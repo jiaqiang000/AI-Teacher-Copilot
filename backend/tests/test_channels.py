@@ -7,7 +7,7 @@ import json
 import logging
 import tempfile
 import threading
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -263,6 +263,47 @@ class TestChannelStore:
         entries = store.list_entries(channel_name="slack")
         assert len(entries) == 1
         assert entries[0]["channel_name"] == "slack"
+
+    def test_channel_store_concurrent_list_and_mutation(self, store, monkeypatch):
+        iteration_started = threading.Event()
+        mutation_requested = threading.Event()
+        mutation_finished = threading.Event()
+
+        class CoordinatedData(dict):
+            def items(self):
+                iterator = iter(super().items())
+                first = next(iterator)
+                iteration_started.set()
+
+                if store._lock.locked():
+                    assert mutation_requested.wait(timeout=5), "mutation thread never requested the store lock"
+                else:
+                    assert mutation_finished.wait(timeout=5), "mutation thread never changed the unlocked store"
+
+                yield first
+                yield from iterator
+
+        store._data = CoordinatedData(
+            {
+                "slack:ch1": {"thread_id": "t1", "user_id": "u1", "created_at": 1.0, "updated_at": 1.0},
+                "feishu:ch2": {"thread_id": "t2", "user_id": "u2", "created_at": 2.0, "updated_at": 2.0},
+            }
+        )
+        monkeypatch.setattr(store, "_save", lambda: None)
+
+        def mutate():
+            assert iteration_started.wait(timeout=5), "list_entries never started iterating"
+            mutation_requested.set()
+            store.set_thread_id("test", "new", "t3")
+            mutation_finished.set()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            list_future = executor.submit(store.list_entries)
+            mutation_future = executor.submit(mutate)
+            mutation_future.result(timeout=5)
+            entries = list_future.result(timeout=5)
+
+        assert {(entry["channel_name"], entry["chat_id"]) for entry in entries} == {("slack", "ch1"), ("feishu", "ch2")}
 
     def test_persistence(self, tmp_path):
         path = tmp_path / "store.json"
@@ -1004,7 +1045,7 @@ class TestChannelManager:
 
         _run(go())
 
-    def test_dispatch_loop_dedupes_stable_provider_message_id(self, tmp_path):
+    def test_worker_pool_dedupes_stable_provider_message_id(self, tmp_path):
         from app.channels.manager import ChannelManager
 
         async def go():
@@ -1186,7 +1227,7 @@ class TestChannelManager:
             ("feishu", "oc_abc"),
         ),
     )
-    def test_dispatch_loop_dedupes_unbound_chat_scoped_redelivery(self, tmp_path, monkeypatch, channel, chat_id):
+    def test_worker_pool_dedupes_unbound_chat_scoped_redelivery(self, tmp_path, monkeypatch, channel, chat_id):
         """Provider redelivery of an unbound chat-scoped message runs the agent once.
 
         Shaped like wechat.py / telegram.py inbound metadata (message_id only, no
@@ -1483,7 +1524,7 @@ class TestChannelManager:
         # silently drop this user's run (willem-bd, PR #4104 review).
         assert await manager._is_duplicate_inbound(_gh("d1", owner_user_id="bob")) is False
 
-    def test_dispatch_loop_releases_dedupe_key_when_handling_fails(self, tmp_path):
+    def test_worker_pool_releases_dedupe_key_when_handling_fails(self, tmp_path):
         """A transient handling failure must not black-hole a provider redelivery (ShenAC #1)."""
         from app.channels.manager import ChannelManager
 
@@ -4826,7 +4867,7 @@ class TestChannelManagerBoundIdentityPolicy:
 
         _run(go())
 
-    def test_unbound_auth_enabled_chat_is_rejected_before_semaphore(self, monkeypatch):
+    def test_unbound_auth_enabled_chat_is_rejected_before_run_creation(self, monkeypatch):
         from app.channels.manager import BOUND_IDENTITY_REQUIRED_MESSAGE, ChannelManager
 
         monkeypatch.delenv("DEER_FLOW_AUTH_DISABLED", raising=False)
@@ -4842,8 +4883,6 @@ class TestChannelManagerBoundIdentityPolicy:
 
             bus.subscribe_outbound(capture)
             await manager.start()
-            assert manager._semaphore is not None
-            await manager._semaphore.acquire()
             try:
                 await asyncio.wait_for(
                     manager._handle_message(
@@ -4857,7 +4896,6 @@ class TestChannelManagerBoundIdentityPolicy:
                     timeout=0.5,
                 )
             finally:
-                manager._semaphore.release()
                 await manager.stop()
 
             assert len(outbound_received) == 1
@@ -6846,7 +6884,6 @@ class TestWeComChannel:
 
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = WeComChannel(bus, config={})
             channel._ws_client = SimpleNamespace(reply_stream=AsyncMock())
 
@@ -6869,9 +6906,8 @@ class TestWeComChannel:
             await channel._publish_ws_inbound(frame, "hello", files=files)
 
             channel._ws_client.reply_stream.assert_awaited_once_with(frame, "stream-1", "Working on it...", False)
-            bus.publish_inbound.assert_awaited_once()
-
-            inbound = bus.publish_inbound.await_args.args[0]
+            inbound = await bus.get_inbound()
+            bus.inbound_task_done()
             assert inbound.channel_name == "wecom"
             assert inbound.chat_id == "user-1"
             assert inbound.user_id == "user-1"
@@ -6890,7 +6926,6 @@ class TestWeComChannel:
 
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = WeComChannel(bus, config={"working_message": "Please wait..."})
             channel._ws_client = SimpleNamespace(reply_stream=AsyncMock())
             channel._working_message = "Please wait..."
@@ -6919,7 +6954,6 @@ class TestWeComChannel:
 
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = WeComChannel(bus, config={})
             channel._ws_client = SimpleNamespace(reply_stream=AsyncMock())
 
@@ -6938,7 +6972,8 @@ class TestWeComChannel:
 
             await channel._publish_ws_inbound(frame, "/mnt/user-data/uploads/report.pdf")
 
-            inbound = bus.publish_inbound.await_args.args[0]
+            inbound = await bus.get_inbound()
+            bus.inbound_task_done()
             assert inbound.text == "/mnt/user-data/uploads/report.pdf"
             assert inbound.msg_type == InboundMessageType.CHAT
 
@@ -7850,9 +7885,16 @@ class TestSlackSendRetry:
 
 class TestSlackAllowedUsers:
     @staticmethod
-    def _submit_coro(coro, loop):
+    def _submit_coro(coro, loop, **_kwargs):
         coro.close()
-        return MagicMock()
+        return True
+
+    @staticmethod
+    def _immediate_loop():
+        loop = MagicMock()
+        loop.is_running.return_value = True
+        loop.call_soon_threadsafe.side_effect = lambda callback, *args: callback(*args)
+        return loop
 
     def test_numeric_allowed_users_match_string_event_user_id(self):
         from app.channels.slack import SlackChannel
@@ -7863,8 +7905,7 @@ class TestSlackAllowedUsers:
             bus=bus,
             config={"allowed_users": [123456]},
         )
-        channel._loop = MagicMock()
-        channel._loop.is_running.return_value = True
+        channel._loop = self._immediate_loop()
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
@@ -7878,13 +7919,13 @@ class TestSlackAllowedUsers:
         with patch(
             "app.channels.slack.asyncio.run_coroutine_threadsafe",
             side_effect=self._submit_coro,
-        ) as submit:
+        ):
             channel._handle_message_event(event)
 
         channel._add_reaction.assert_called_once_with("C123", "1710000000.000100", "eyes")
         channel._send_running_reply.assert_called_once_with("C123", "1710000000.000100")
-        submit.assert_called_once()
-        inbound = bus.publish_inbound.call_args.args[0]
+        channel._loop.call_soon_threadsafe.assert_called_once()
+        inbound = bus.get_inbound_nowait()
         assert inbound.user_id == "123456"
         assert inbound.chat_id == "C123"
         assert inbound.text == "hello from slack"
@@ -7898,8 +7939,7 @@ class TestSlackAllowedUsers:
             bus=bus,
             config={"allowed_users": "U123456"},
         )
-        channel._loop = MagicMock()
-        channel._loop.is_running.return_value = True
+        channel._loop = self._immediate_loop()
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
@@ -7913,13 +7953,13 @@ class TestSlackAllowedUsers:
         with patch(
             "app.channels.slack.asyncio.run_coroutine_threadsafe",
             side_effect=self._submit_coro,
-        ) as submit:
+        ):
             channel._handle_message_event(event)
 
         channel._add_reaction.assert_called_once_with("C123", "1710000000.000100", "eyes")
         channel._send_running_reply.assert_called_once_with("C123", "1710000000.000100")
-        submit.assert_called_once()
-        inbound = bus.publish_inbound.call_args.args[0]
+        channel._loop.call_soon_threadsafe.assert_called_once()
+        inbound = bus.get_inbound_nowait()
         assert inbound.user_id == "U123456"
         assert inbound.chat_id == "C123"
         assert inbound.text == "hello from slack"
@@ -7947,8 +7987,9 @@ class TestSlackAllowedUsers:
             "ts": "1710000000.000100",
         }
 
-        with patch(
-            "app.channels.slack.asyncio.run_coroutine_threadsafe",
+        with patch.object(
+            channel,
+            "_submit_threadsafe_coroutine",
             side_effect=self._submit_coro,
         ) as submit:
             channel._handle_message_event(event)
@@ -7965,8 +8006,7 @@ class TestSlackAllowedUsers:
         bus = MessageBus()
         bus.publish_inbound = AsyncMock()
         channel = SlackChannel(bus=bus, config={"bot_user_id": "UBOT"})
-        channel._loop = MagicMock()
-        channel._loop.is_running.return_value = True
+        channel._loop = self._immediate_loop()
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
@@ -7984,7 +8024,7 @@ class TestSlackAllowedUsers:
         ):
             channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = bus.get_inbound_nowait()
         assert inbound.text == "/help"
         assert inbound.msg_type == InboundMessageType.COMMAND
 
@@ -7994,8 +8034,7 @@ class TestSlackAllowedUsers:
         bus = MessageBus()
         bus.publish_inbound = AsyncMock()
         channel = SlackChannel(bus=bus, config={"bot_user_id": "UBOT"})
-        channel._loop = MagicMock()
-        channel._loop.is_running.return_value = True
+        channel._loop = self._immediate_loop()
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
@@ -8013,7 +8052,7 @@ class TestSlackAllowedUsers:
         ):
             channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = bus.get_inbound_nowait()
         assert inbound.text == "/help"
         assert inbound.msg_type == InboundMessageType.COMMAND
 
@@ -8023,8 +8062,7 @@ class TestSlackAllowedUsers:
         bus = MessageBus()
         bus.publish_inbound = AsyncMock()
         channel = SlackChannel(bus=bus, config={"bot_user_id": "UBOT"})
-        channel._loop = MagicMock()
-        channel._loop.is_running.return_value = True
+        channel._loop = self._immediate_loop()
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
@@ -8042,7 +8080,7 @@ class TestSlackAllowedUsers:
         ):
             channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = bus.get_inbound_nowait()
         assert inbound.text == "/data-analysis analyze uploads/foo.csv"
         assert inbound.msg_type == InboundMessageType.CHAT
 
@@ -8052,8 +8090,7 @@ class TestSlackAllowedUsers:
         bus = MessageBus()
         bus.publish_inbound = AsyncMock()
         channel = SlackChannel(bus=bus, config={"bot_user_id": "UBOT"})
-        channel._loop = MagicMock()
-        channel._loop.is_running.return_value = True
+        channel._loop = self._immediate_loop()
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
@@ -8071,7 +8108,7 @@ class TestSlackAllowedUsers:
         ):
             channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = bus.get_inbound_nowait()
         assert inbound.text == "<@UASSIGNEE> please review this"
         assert inbound.msg_type == InboundMessageType.CHAT
 
@@ -8081,8 +8118,7 @@ class TestSlackAllowedUsers:
         bus = MessageBus()
         bus.publish_inbound = AsyncMock()
         channel = SlackChannel(bus=bus, config={"bot_user_id": "UBOT"})
-        channel._loop = MagicMock()
-        channel._loop.is_running.return_value = True
+        channel._loop = self._immediate_loop()
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
@@ -8100,7 +8136,7 @@ class TestSlackAllowedUsers:
         ):
             channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = bus.get_inbound_nowait()
         assert inbound.text == "<@UASSIGNEE> <@UBOT> please review this"
         assert inbound.msg_type == InboundMessageType.CHAT
 
@@ -8110,8 +8146,7 @@ class TestSlackAllowedUsers:
         bus = MessageBus()
         bus.publish_inbound = AsyncMock()
         channel = SlackChannel(bus=bus, config={})
-        channel._loop = MagicMock()
-        channel._loop.is_running.return_value = True
+        channel._loop = self._immediate_loop()
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
@@ -8129,7 +8164,7 @@ class TestSlackAllowedUsers:
         ):
             channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = bus.get_inbound_nowait()
         assert inbound.text == "<@UASSIGNEE> /help <@UBOT>"
         assert inbound.msg_type == InboundMessageType.CHAT
 
@@ -8140,8 +8175,8 @@ class TestSlackAllowedUsers:
         bus.publish_inbound = AsyncMock()
         channel = SlackChannel(bus=bus, config={})
         channel._SocketModeResponse = lambda envelope_id: SimpleNamespace(envelope_id=envelope_id)
-        channel._loop = MagicMock()
-        channel._loop.is_running.return_value = True
+        channel._loop = self._immediate_loop()
+        channel._running = True
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
@@ -8167,7 +8202,7 @@ class TestSlackAllowedUsers:
         ):
             channel._on_socket_event(client, req)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = bus.get_inbound_nowait()
         assert channel._bot_user_id == "UBOT"
         assert inbound.text == "/help"
         assert inbound.msg_type == InboundMessageType.COMMAND
@@ -8182,8 +8217,7 @@ class TestSlackAllowedUsers:
                 bus=bus,
                 config={"allowed_users": 123456},
             )
-        channel._loop = MagicMock()
-        channel._loop.is_running.return_value = True
+        channel._loop = self._immediate_loop()
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
@@ -8197,12 +8231,12 @@ class TestSlackAllowedUsers:
         with patch(
             "app.channels.slack.asyncio.run_coroutine_threadsafe",
             side_effect=self._submit_coro,
-        ) as submit:
+        ):
             channel._handle_message_event(event)
 
         assert "Slack allowed_users should be a list" in caplog.text
-        submit.assert_called_once()
-        inbound = bus.publish_inbound.call_args.args[0]
+        channel._loop.call_soon_threadsafe.assert_called_once()
+        inbound = bus.get_inbound_nowait()
         assert inbound.user_id == "123456"
 
     def test_raises_after_all_retries_exhausted(self):

@@ -1,0 +1,89 @@
+# Teacher Copilot 配置示例(合并到 deer-flow/config.yaml 或作为独立配置参考)
+#
+# 本文件是增量配置片段,供实现阶段合并进 DeerFlow 主配置;不覆盖 config.example.yaml。
+# 说明:Agent/Tool/Skill 通过 DeerFlow 原生配置接入(宪法 III 复用优先)。
+
+# ===== Agent:teacher-copilot(Custom Agent)=====
+agents:
+  - name: teacher-copilot
+    description: AI Teacher Copilot 教师主智能体
+    tool_groups:
+      - teacher:data
+      - teacher:resource
+    skills:
+      - student-diagnosis
+      - class-learning-analysis
+      - homework-review
+      - differentiated-practice
+
+# ===== Tools(8 个业务 Tool,注册进 DeerFlow Tool Runtime)=====
+tools:
+  - name: get_student_profile
+    group: teacher:data
+    use: app.teacher_copilot.tools.profile:get_student_profile
+  - name: get_student_grading_history
+    group: teacher:data
+    use: app.teacher_copilot.tools.profile:get_student_grading_history
+  - name: get_class_profile
+    group: teacher:data
+    use: app.teacher_copilot.tools.profile:get_class_profile
+  - name: list_class_students
+    group: teacher:data
+    use: app.teacher_copilot.tools.class_query:list_class_students
+  - name: list_class_homeworks
+    group: teacher:data
+    use: app.teacher_copilot.tools.class_query:list_class_homeworks
+  - name: get_homework_analysis
+    group: teacher:data
+    use: app.teacher_copilot.tools.analysis:get_homework_analysis
+  - name: get_question_analysis
+    group: teacher:data
+    use: app.teacher_copilot.tools.analysis:get_question_analysis
+  - name: search_question_bank
+    group: teacher:resource
+    use: app.teacher_copilot.tools.resource:search_question_bank
+
+# ===== Sub-Agents(按需委派)=====
+subagents:
+  custom_agents:
+    diagnosis-worker:
+      description: 对分配的学生集合执行深度学习诊断
+      tools:
+        - get_student_profile
+        - get_student_grading_history
+      skills:
+        - student-diagnosis
+      disallowed_tools:
+        - task
+        - ask_clarification
+        - present_files
+    practice-worker:
+      description: 对分配的学生组或学生批次生成针对性练习
+      tools:
+        - get_student_profile
+        - get_class_profile
+        - search_question_bank
+      skills:
+        - differentiated-practice
+      disallowed_tools:
+        - task
+        - ask_clarification
+        - present_files
+    reviewer:
+      description: 独立审核大型教学方案的事实一致性和练习匹配合理性
+      tools:
+        - get_class_profile
+        - get_student_profile
+        - get_student_grading_history
+        - get_homework_analysis
+        - get_question_analysis
+        - search_question_bank
+      disallowed_tools:
+        - task
+        - ask_clarification
+        - present_files
+
+# ===== Extensions(TeacherBusinessContextMiddleware)=====
+extensions:
+  middlewares:
+    - app.teacher_copilot.agents.middlewares.teacher_business_context:TeacherBusinessContextMiddleware
