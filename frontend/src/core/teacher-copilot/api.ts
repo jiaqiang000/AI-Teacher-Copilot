@@ -2,12 +2,13 @@
 // 路径:BASE_URL 由环境变量 TC_API_BASE 或 NEXT_PUBLIC_GATEWAY 配置,默认 /api/teacher-copilot
 
 import type { GradingResult, HomeworkAnalysis, StudentProfile } from "./types"
+import { fetch as apiFetch } from "@/core/api/fetcher"
 
 // 同源相对路径:浏览器经 next.config rewrites(/api/teacher-copilot → Gateway)访问,
 // 自动携带登录 cookie;避免直连后端端口(跨域/无认证)问题。
 const BASE = "/api/teacher-copilot"
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await apiFetch(`${BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -153,7 +154,7 @@ export async function getClassProfile(classId: string, subject: string) {
 export async function uploadImage(file: File): Promise<string> {
   const form = new FormData()
   form.append("file", file)
-  const res = await fetch(`${BASE}/uploads`, { method: "POST", body: form })
+  const res = await apiFetch(`${BASE}/uploads`, { method: "POST", body: form })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body?.detail?.message || `上传失败 ${res.status}`)

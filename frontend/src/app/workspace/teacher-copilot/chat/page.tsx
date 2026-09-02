@@ -3,6 +3,7 @@
 // 真实 Agent:POST /api/runs/wait(assistant_id=teacher-copilot),经 next.config
 // /api/:path* 代理到 Gateway;展示工具/技能执行步骤与真实回答。
 import { useCallback, useState } from "react"
+import { fetch as apiFetch } from "@/core/api/fetcher"
 
 const QUICK = [
   "分析八三班长期学情",
@@ -75,7 +76,7 @@ export default function CopilotChatPage() {
       setBusy(true)
       setError("")
       try {
-        const res = await fetch("/api/runs/wait", {
+        const res = await apiFetch("/api/runs/wait", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
