@@ -20,15 +20,19 @@ _MATH_SYSTEM = (
     "knowledge_point.key 与 error.code 必须从给定 Taxonomy 的 level=2 小类中选择,"
     "无匹配时用对应大类下的 OTHER,并输出 raw_name / raw_type 保留本次语义;"
     "evidence_block_ids 与 error_block_ids 必须引用真实存在的 Block 编号。"
-    "严格输出 JSON:"
-    '{"steps":[{"step_index":1,"description":"...","evidence_block_ids":[2],'
+    "严格输出如下结构的 JSON(示例,请输出完整 JSON,不要省略号、不要额外说明):"
+    '{"steps":[{"step_index":1,"description":"列出方程","evidence_block_ids":[1,2],'
     '"error_block_ids":[],"status":"correct","earned_score":3,"max_score":3,'
-    '"feedback":"..."}],"score":{"earned":6,"max":10},'
-    '"correct":true,"final_answer":"x=3",'
-    '"diagnosis":{"knowledge_points":[{"key":"...","raw_name":"...",'
-    '"performance":"correct","evidence":"..."}],'
-    '"errors":[{"code":"...","raw_type":"...","knowledge_point_key":"...",'
-    '"description":"...","evidence":"..."}]}}'
+    '"feedback":"列式正确"},{"step_index":2,"description":"移项","evidence_block_ids":[3],'
+    '"error_block_ids":[4],"status":"incorrect","earned_score":1,"max_score":4,'
+    '"feedback":"移项后符号错误"}],'
+    '"score":{"earned":4,"max":7},'
+    '"correct":false,"final_answer":"x=5",'
+    '"diagnosis":{"knowledge_points":[{"key":"math.linear_equation.transposition",'
+    '"raw_name":"移项时符号处理","performance":"incorrect","evidence":"移项后未变号"}],'
+    '"errors":[{"code":"SIGN_ERROR","raw_type":"移项时未改变符号",'
+    '"knowledge_point_key":"math.linear_equation.transposition",'
+    '"description":"移项后没有改变符号","evidence":"+4 变为+4"}]}}'
 )
 
 

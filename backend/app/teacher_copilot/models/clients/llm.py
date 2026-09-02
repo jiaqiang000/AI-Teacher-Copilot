@@ -109,8 +109,11 @@ class LlmClient:
             },
             json={
                 "model": self._cfg.llm_model,
-                "max_tokens": 4096,
+                "max_tokens": 8192,
                 "temperature": 0.2,
+                # DeepSeek Anthropic 兼容端点:关闭 thinking,
+                # 否则长提示时输出全被 thinking 占用,text 被截断(实测修复点)
+                "thinking": {"type": "disabled"},
                 "system": system or "你是数学/英语批改助手,严格按给定 JSON 格式输出。",
                 "messages": [{"role": "user", "content": prompt}],
             },
@@ -120,7 +123,12 @@ class LlmClient:
         data = resp.json()
         # Anthropic:content 为 block 数组,取 text 拼接
         blocks = data.get("content", [])
-        return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+        # Anthropic:content 为 block 数组,取 text 拼接(thinking 块不取;
+        # 若 max_tokens 被 thinking 占满则无 text,记录并返回空以触发重试)
+        text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+        if not text and data.get("stop_reason") == "max_tokens":
+            logger.warning("LLM 响应被 max_tokens 截断(只返回 thinking),返回空触发重试")
+        return text
 
     @property
     def is_mock(self) -> bool:

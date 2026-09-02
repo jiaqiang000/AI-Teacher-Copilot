@@ -24,7 +24,35 @@ class GradingResultAssembler:
 
     @staticmethod
     def assemble_math(output: dict, subject: str, question_type: str, difficulty: str | None) -> dict:
-        """数学结果组装。"""
+        """数学结果组装(容忍模型输出简化结构)。
+
+        支持两种模型输出:
+        - 标准:{"steps":[...], "score":{...}, "correct":..., ...}
+        - 简化:{"score": 8, "max_score": 10, "is_correct": true, ...}(无 steps)
+        简化结构会归一为单步骤,保证契约校验通过。
+        """
+        # 简化结构归一(模型未按 steps 输出时)
+        if "steps" not in output and "score" in output and "max_score" in output:
+            earned = output["score"]
+            max_score = output["max_score"]
+            output = {
+                "steps": [{
+                    "step_index": 1, "description": "整题作答",
+                    "evidence_block_ids": [], "error_block_ids": [],
+                    "status": "correct" if output.get("is_correct") else "incorrect",
+                    "earned_score": earned, "max_score": max_score,
+                    "feedback": "整题评分(未拆步骤)",
+                }],
+                "score": {"earned": earned, "max": max_score},
+                "correct": bool(output.get("is_correct")),
+                "final_answer": output.get("final_answer"),
+                "diagnosis": {
+                    "knowledge_points": [],
+                    "errors": [{"code": e, "raw_type": "", "knowledge_point_key": "",
+                                "description": "", "evidence": ""}
+                               for e in (output.get("error_type") or []) if isinstance(e, str)],
+                },
+            }
         steps = output.get("steps", [])
         if not steps:
             raise GradingOutputInvalid("数学批改输出缺少步骤")
