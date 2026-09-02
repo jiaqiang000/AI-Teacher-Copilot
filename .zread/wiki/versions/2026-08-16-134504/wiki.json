@@ -1,0 +1,271 @@
+{
+  "id": "2026-08-16-134504",
+  "generated_at": "2026-08-16T05:45:47.425Z",
+  "language": "zh",
+  "source": "https://zread.ai/bytedance/deer-flow",
+  "pages": [
+    {
+      "slug": "1-overview",
+      "title": "概述",
+      "file": "1-overview.md",
+      "section": "入门",
+      "level": "Beginner",
+      "minutes": "15"
+    },
+    {
+      "slug": "2-quick-start",
+      "title": "快速开始",
+      "file": "2-quick-start.md",
+      "section": "入门",
+      "level": "Beginner",
+      "minutes": "22"
+    },
+    {
+      "slug": "3-configuration-and-setup-wizard",
+      "title": "配置与设置向导",
+      "file": "3-configuration-and-setup-wizard.md",
+      "section": "入门",
+      "level": "Beginner",
+      "minutes": "24"
+    },
+    {
+      "slug": "4-latest-updates",
+      "title": "最新更新",
+      "file": "4-latest-updates.md",
+      "section": "动态",
+      "level": "Beginner",
+      "minutes": "20"
+    },
+    {
+      "slug": "5-issues-and-feedbacks",
+      "title": "问题与反馈",
+      "file": "5-issues-and-feedbacks.md",
+      "section": "动态",
+      "level": "Intermediate",
+      "minutes": "25"
+    },
+    {
+      "slug": "6-about-contributors",
+      "title": "关于贡献者",
+      "file": "6-about-contributors.md",
+      "section": "动态",
+      "level": "Beginner",
+      "minutes": "16"
+    },
+    {
+      "slug": "7-architecture-overview",
+      "title": "架构概述",
+      "file": "7-architecture-overview.md",
+      "section": "深入解析",
+      "level": "Intermediate",
+      "minutes": "19"
+    },
+    {
+      "slug": "8-lead-agent-design",
+      "title": "主 Agent 设计",
+      "file": "8-lead-agent-design.md",
+      "section": "深入解析",
+      "level": "Advanced",
+      "minutes": "24",
+      "group": "Agent 编排"
+    },
+    {
+      "slug": "9-subagent-execution-engine",
+      "title": "子 Agent 执行引擎",
+      "file": "9-subagent-execution-engine.md",
+      "section": "深入解析",
+      "level": "Advanced",
+      "minutes": "33",
+      "group": "Agent 编排"
+    },
+    {
+      "slug": "10-agent-middleware-pipeline",
+      "title": "Agent 中间件管道",
+      "file": "10-agent-middleware-pipeline.md",
+      "section": "深入解析",
+      "level": "Intermediate",
+      "minutes": "23",
+      "group": "Agent 编排"
+    },
+    {
+      "slug": "11-skills-system",
+      "title": "技能系统",
+      "file": "11-skills-system.md",
+      "section": "深入解析",
+      "level": "Intermediate",
+      "minutes": "28",
+      "group": "扩展层"
+    },
+    {
+      "slug": "12-built-in-skills-catalog",
+      "title": "内置技能目录",
+      "file": "12-built-in-skills-catalog.md",
+      "section": "深入解析",
+      "level": "Beginner",
+      "minutes": "31",
+      "group": "扩展层"
+    },
+    {
+      "slug": "13-custom-skill-authoring",
+      "title": "自定义技能编写",
+      "file": "13-custom-skill-authoring.md",
+      "section": "深入解析",
+      "level": "Advanced",
+      "minutes": "25",
+      "group": "扩展层"
+    },
+    {
+      "slug": "14-sandbox-and-file-system",
+      "title": "沙箱与文件系统",
+      "file": "14-sandbox-and-file-system.md",
+      "section": "深入解析",
+      "level": "Advanced",
+      "minutes": "22",
+      "group": "执行基础设施"
+    },
+    {
+      "slug": "15-model-provider-integration",
+      "title": "模型提供商集成",
+      "file": "15-model-provider-integration.md",
+      "section": "深入解析",
+      "level": "Intermediate",
+      "minutes": "19",
+      "group": "执行基础设施"
+    },
+    {
+      "slug": "16-context-engineering-and-compaction",
+      "title": "上下文工程与压缩",
+      "file": "16-context-engineering-and-compaction.md",
+      "section": "深入解析",
+      "level": "Advanced",
+      "minutes": "22",
+      "group": "执行基础设施"
+    },
+    {
+      "slug": "17-long-term-memory-backends",
+      "title": "长期记忆后端",
+      "file": "17-long-term-memory-backends.md",
+      "section": "深入解析",
+      "level": "Advanced",
+      "minutes": "29",
+      "group": "持久化与记忆"
+    },
+    {
+      "slug": "18-checkpointing-and-state-management",
+      "title": "检查点与状态管理",
+      "file": "18-checkpointing-and-state-management.md",
+      "section": "深入解析",
+      "level": "Intermediate",
+      "minutes": "26",
+      "group": "持久化与记忆"
+    },
+    {
+      "slug": "19-im-channel-adapters",
+      "title": "IM 通道适配器",
+      "file": "19-im-channel-adapters.md",
+      "section": "深入解析",
+      "level": "Intermediate",
+      "minutes": "19",
+      "group": "集成与通信"
+    },
+    {
+      "slug": "20-mcp-server-and-tool-bridge",
+      "title": "MCP 服务器与工具桥接",
+      "file": "20-mcp-server-and-tool-bridge.md",
+      "section": "深入解析",
+      "level": "Advanced",
+      "minutes": "30",
+      "group": "集成与通信"
+    },
+    {
+      "slug": "21-extensions-api",
+      "title": "扩展 API",
+      "file": "21-extensions-api.md",
+      "section": "深入解析",
+      "level": "Intermediate",
+      "minutes": "26",
+      "group": "集成与通信"
+    },
+    {
+      "slug": "22-next-js-frontend-architecture",
+      "title": "Next.js 前端架构",
+      "file": "22-next-js-frontend-architecture.md",
+      "section": "深入解析",
+      "level": "Intermediate",
+      "minutes": "23",
+      "group": "前端与网关"
+    },
+    {
+      "slug": "23-gateway-api-and-auth",
+      "title": "网关 API 与认证",
+      "file": "23-gateway-api-and-auth.md",
+      "section": "深入解析",
+      "level": "Advanced",
+      "minutes": "28",
+      "group": "前端与网关"
+    },
+    {
+      "slug": "24-stream-bridge-and-event-pipeline",
+      "title": "流桥接与事件管道",
+      "file": "24-stream-bridge-and-event-pipeline.md",
+      "section": "深入解析",
+      "level": "Intermediate",
+      "minutes": "29",
+      "group": "前端与网关"
+    },
+    {
+      "slug": "25-guardrails-and-safety-middleware",
+      "title": "护栏与安全中间件",
+      "file": "25-guardrails-and-safety-middleware.md",
+      "section": "深入解析",
+      "level": "Advanced",
+      "minutes": "27",
+      "group": "运维与安全"
+    },
+    {
+      "slug": "26-docker-deployment-strategies",
+      "title": "Docker 部署策略",
+      "file": "26-docker-deployment-strategies.md",
+      "section": "深入解析",
+      "level": "Intermediate",
+      "minutes": "26",
+      "group": "运维与安全"
+    },
+    {
+      "slug": "27-tracing-and-observability",
+      "title": "链路追踪与可观测性",
+      "file": "27-tracing-and-observability.md",
+      "section": "深入解析",
+      "level": "Advanced",
+      "minutes": "26",
+      "group": "运维与安全"
+    },
+    {
+      "slug": "28-terminal-workbench-tui",
+      "title": "终端工作台 (TUI)",
+      "file": "28-terminal-workbench-tui.md",
+      "section": "深入解析",
+      "level": "Intermediate",
+      "minutes": "23",
+      "group": "高级工具"
+    },
+    {
+      "slug": "29-scheduled-tasks-system",
+      "title": "定时任务系统",
+      "file": "29-scheduled-tasks-system.md",
+      "section": "深入解析",
+      "level": "Advanced",
+      "minutes": "22",
+      "group": "高级工具"
+    },
+    {
+      "slug": "30-community-search-providers",
+      "title": "社区搜索提供商",
+      "file": "30-community-search-providers.md",
+      "section": "深入解析",
+      "level": "Intermediate",
+      "minutes": "18",
+      "group": "高级工具"
+    }
+  ]
+}
