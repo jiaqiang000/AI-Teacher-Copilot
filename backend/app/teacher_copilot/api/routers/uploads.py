@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, Request
 from app.teacher_copilot.api.identity import reject_legacy_identity_headers
 from app.teacher_copilot.api.response import fail, ok
 from app.teacher_copilot.errors import InvalidArgument, TcError
+from app.teacher_copilot.models.clients.ocr import OcrClient
 from app.teacher_copilot.services.oss_service import OssService
 
 router = APIRouter(prefix="/api/teacher-copilot")
@@ -44,5 +45,25 @@ async def upload_image(
             tmp_path = tmp.name
         url = await OssService().upload(tmp_path)
         return ok({"url": url})
+    except TcError as e:
+        raise HTTPException(e.http_status, detail=dict(code=e.code, message=e.message))
+
+
+@router.post("/ocr")
+async def ocr_recognize(body: dict):
+    """题目图 OCR 识别(回填出题文本)。body: {image_url}(公网可下载链接)。
+
+    学生作答批改内部自带 OCR;本端点服务"教师上传题目图 → 回填"场景,
+    与 OcrClient 共用智谱 GLM-OCR(未配置密钥时返回 mock)。
+    """
+    try:
+        image_url = body.get("image_url") or ""
+        if not image_url:
+            raise InvalidArgument("缺少 image_url")
+        result = await OcrClient().recognize("", image_url=image_url)
+        return ok({
+            "text": result.get("md_results", "") or result.get("text", ""),
+            "blocks": len(result.get("layout_details") or []),
+        })
     except TcError as e:
         raise HTTPException(e.http_status, detail=dict(code=e.code, message=e.message))

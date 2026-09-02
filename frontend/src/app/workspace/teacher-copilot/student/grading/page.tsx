@@ -1,8 +1,15 @@
 "use client"
 // 学生批改页(对照 Figma 08:题目/答案卡 + 五步进度 + 批改结果)
-// 进度步骤:图片上传 → OCR → 解析 → 批改 → 生成结果(复用 ChainOfThought 思路)
+// 真实流程:选图上传(OSS)→ POST /submissions → 轮询进度 → 批改结果
 import { useCallback, useEffect, useState } from "react"
-import { getGradingResult, getSubmission, submitAnswer } from "@/core/teacher-copilot/api"
+import { useSearchParams } from "next/navigation"
+import {
+  getGradingResult,
+  getStudentHomework,
+  getSubmission,
+  submitAnswer,
+  uploadImage,
+} from "@/core/teacher-copilot/api"
 import type { GradingResult } from "@/core/teacher-copilot/types"
 
 const STAGES = [
@@ -13,80 +20,168 @@ const STAGES = [
   { key: "ASSEMBLING", label: "正在生成批改结果" },
 ]
 
-// 演示:直接提供已上传答案的 submission(真实接入由上传 → POST /submissions → SSE)
-const DEMO_SUBMISSION = "sub_smoke1"
-
 export default function StudentGradingPage() {
-  const [status, setStatus] = useState<string>("RUNNING")
-  const [stage, setStage] = useState<string>("GRADING")
+  const params = useSearchParams()
+  const homeworkId = params.get("homework_id") || "hw_004"
+  const questionId = params.get("question_id") || ""
+
+  const [question, setQuestion] = useState<
+    Awaited<ReturnType<typeof getStudentHomework>>["questions"][number] | null
+  >(null)
+  const [submissionId, setSubmissionId] = useState<string | null>(null)
+  const [status, setStatus] = useState<string>("")
+  const [stage, setStage] = useState<string>("")
   const [result, setResult] = useState<GradingResult | null>(null)
+  const [uploadedUrl, setUploadedUrl] = useState<string>("")
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
-  const load = useCallback(async () => {
+  const refreshResult = useCallback(async (sid: string) => {
     try {
-      const sub = await getSubmission(DEMO_SUBMISSION)
-      setStatus(sub.status)
-      setStage(sub.current_stage)
-      if (sub.status === "SUCCEEDED") {
-        const r = await getGradingResult(DEMO_SUBMISSION)
-        setResult(r)
+      const r = await getGradingResult(sid)
+      setResult(r)
+    } catch {
+      /* 结果尚未生成时忽略 */
+    }
+  }, [])
+
+  // 载入作业题目 + 已有提交
+  const loadView = useCallback(async () => {
+    try {
+      const data = await getStudentHomework(homeworkId)
+      const q =
+        data.questions.find((it) => it.question_id === questionId) || data.questions[0]
+      setQuestion(q ?? null)
+      if (q?.my_submission) {
+        setSubmissionId(q.my_submission.submission_id)
+        setStatus(q.my_submission.status)
+        setStage(q.my_submission.current_stage)
+        if (q.my_submission.status === "SUCCEEDED") {
+          await refreshResult(q.my_submission.submission_id)
+        }
       }
     } catch (e) {
       setError((e as Error).message)
     }
-  }, [])
+  }, [homeworkId, questionId, refreshResult])
 
   useEffect(() => {
-    load()
-    // 模拟进度推进:真实场景由 SSE 事件驱动(见 core/grading/hooks)
+    void loadView()
+  }, [loadView])
+
+  // 提交后轮询进度(复盘恢复;V1 契约亦支持 SSE events 流)
+  useEffect(() => {
+    if (!submissionId || status === "SUCCEEDED" || status === "FAILED") return
     const timer = setInterval(async () => {
-      await load()
+      try {
+        const sub = await getSubmission(submissionId)
+        setStatus(sub.status)
+        setStage(sub.current_stage)
+        if (sub.status === "SUCCEEDED") await refreshResult(submissionId)
+      } catch {
+        /* 轮询失败下一轮重试 */
+      }
     }, 3000)
     return () => clearInterval(timer)
-  }, [load])
+  }, [submissionId, status, refreshResult])
+
+  async function handleUpload(file: File) {
+    setBusy(true)
+    setError("")
+    try {
+      const url = await uploadImage(file)
+      setUploadedUrl(url)
+      const res = await submitAnswer({
+        question_id: questionId,
+        homework_id: homeworkId,
+        image_url: url,
+      })
+      setSubmissionId(res.submission_id)
+      setStatus(res.status)
+      setStage(res.current_stage)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const stageIndex = STAGES.findIndex((s) => s.key === stage)
 
   return (
     <div className="p-8 space-y-5 max-w-3xl">
       <header>
-        <h1 className="text-2xl font-bold">第 3 题 · 函数图像综合</h1>
-        <p className="text-muted-foreground text-sm">上传一张图片 = 一道题 · 当前 Submission</p>
+        <h1 className="text-2xl font-bold">
+          第 {question?.question_no ?? "-"} 题
+          {question?.difficulty ? ` · ${question.difficulty}` : ""}
+        </h1>
+        <p className="text-muted-foreground text-sm">
+          上传一张图片 = 一道题 · 由 AI Teacher 批改
+        </p>
       </header>
 
       <section className="rounded-lg border p-4">
         <h2 className="text-sm font-semibold mb-1">题目</h2>
-        <p className="text-sm">根据函数图像判断区间变化,并说明理由。</p>
+        <p className="text-sm whitespace-pre-wrap">{question?.content || "加载中..."}</p>
       </section>
 
       <section className="rounded-lg border p-4">
-        <h2 className="text-sm font-semibold mb-1">你的答案</h2>
-        <p className="text-sm text-muted-foreground">answer_003.jpg · 上传完成</p>
+        <h2 className="text-sm font-semibold mb-2">你的答案</h2>
+        {!uploadedUrl && !submissionId && (
+          <label className="block rounded border border-dashed p-4 text-center text-sm text-muted-foreground cursor-pointer hover:bg-gray-50">
+            {busy ? "上传中..." : "选择手写作答图片上传(jpg/png, ≤10MB)"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) void handleUpload(f)
+              }}
+            />
+          </label>
+        )}
+        {(uploadedUrl || submissionId) && (
+          <p className="text-sm text-muted-foreground">
+            {uploadedUrl
+              ? "✚ 作答图片已上传并提交批改"
+              : `✚ 已提交(${submissionId})`}
+          </p>
+        )}
       </section>
 
-      {/* 进度(对照 Figma 08) */}
-      <section className="rounded-lg border p-4">
-        <div className="flex justify-between items-center">
-          <h2 className="font-semibold">AI Teacher · 正在批改</h2>
-          <span className="text-xs text-muted-foreground">status: {status} · current_stage: {stage}</span>
-        </div>
-        <ul className="mt-3 space-y-1 text-sm">
-          {STAGES.map((s, i) => (
-            <li key={s.key} className="flex items-center gap-2">
-              <span className="w-4">{i < stageIndex ? "✓" : i === stageIndex ? "●" : "○"}</span>
-              {s.label}
-            </li>
-          ))}
-        </ul>
-      </section>
+      {submissionId && (
+        <section className="rounded-lg border p-4">
+          <div className="flex justify-between items-center">
+            <h2 className="font-semibold">AI Teacher · 正在批改</h2>
+            <span className="text-xs text-muted-foreground">
+              status: {status} · stage: {stage}
+            </span>
+          </div>
+          <ul className="mt-3 space-y-1 text-sm">
+            {STAGES.map((s, i) => (
+              <li key={s.key} className="flex items-center gap-2">
+                <span className="w-4">
+                  {i < stageIndex ? "✓" : i === stageIndex ? "●" : "○"}
+                </span>
+                {s.label}
+              </li>
+            ))}
+          </ul>
+          {status === "FAILED" && (
+            <p className="text-red-600 text-sm mt-2">批改失败,请上传重试。</p>
+          )}
+        </section>
+      )}
 
-      {/* 批改结果区:SUCCEEDED 后展示 GradingResultMessage(参考业务文档:完成后才展示) */}
       <section className="rounded-lg border p-4">
-        <h2 className="font-semibold mb-2">批改结果{result ? "" : "预览"}</h2>
+        <h2 className="font-semibold mb-2">批改结果{result ? "" : "(完成后展示)"}</h2>
         {result ? (
           <ResultView result={result} />
         ) : (
-          <p className="text-sm text-muted-foreground">批改完成后展示结果(数学步骤分与错误定位)</p>
+          <p className="text-sm text-muted-foreground">
+            批改完成后展示结果(数学步骤分与错误定位)
+          </p>
         )}
       </section>
 
@@ -100,7 +195,9 @@ function ResultView({ result }: { result: GradingResult }) {
     <div>
       <div className="text-3xl font-bold">
         {result.score.earned} / {result.score.max}
-        <span className="text-sm text-muted-foreground ml-2">({Math.round(result.score.rate * 100)}%)</span>
+        <span className="text-sm text-muted-foreground ml-2">
+          ({Math.round(result.score.rate * 100)}%)
+        </span>
       </div>
       <p className="mt-2 text-sm">{result.feedback.summary}</p>
       {result.math_detail && (
@@ -108,7 +205,9 @@ function ResultView({ result }: { result: GradingResult }) {
           {result.math_detail.steps.map((s) => (
             <li key={s.step_index} className="flex justify-between border-b py-1">
               <span>{s.description}</span>
-              <span className="text-muted-foreground">{s.status} · {s.earned_score}/{s.max_score}</span>
+              <span className="text-muted-foreground">
+                {s.status} · {s.earned_score}/{s.max_score}
+              </span>
             </li>
           ))}
         </ul>
@@ -118,7 +217,9 @@ function ResultView({ result }: { result: GradingResult }) {
           {Object.entries(result.english_essay_detail.dimension_scores).map(([k, v]) => (
             <li key={k} className="flex justify-between border-b py-1">
               <span>{k}</span>
-              <span>{v.score}/{v.max_score}</span>
+              <span>
+                {v.score}/{v.max_score}
+              </span>
             </li>
           ))}
         </ul>

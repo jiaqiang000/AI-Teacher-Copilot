@@ -21,7 +21,7 @@ export default function DashboardPage() {
   const recentRate = profile?.overview?.avg_score_rate
   const attentionCount = profile?.attention_students?.length ?? 0
   const weakPoints = profile?.weak_points?.map((w) => w.knowledge_point_key.split(".").pop()) || []
-  const completionRate = hwAnalysis?.completion?.completion_rate
+  const completionRate = hwAnalysis?.completion?.completion_rate ?? null
 
   return (
     <div className="p-8 space-y-8">

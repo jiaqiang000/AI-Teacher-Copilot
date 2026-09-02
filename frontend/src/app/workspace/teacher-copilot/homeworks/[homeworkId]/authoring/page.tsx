@@ -1,8 +1,8 @@
 "use client"
 // 作业创建(对照 Figma 04:作业信息 + 添加题目三来源 + 题目列表 + 发布)
 // 交互:手动输入/上传图片(OCR 预填)/题库选择;数学难度预判确认;发布校验
-import { useState } from "react"
-import { addQuestion, createHomework, publishHomework } from "@/core/teacher-copilot/api"
+import { useRef, useState } from "react"
+import { addQuestion, createHomework, publishHomework, recognizeQuestionImage, searchQuestionBank, uploadImage } from "@/core/teacher-copilot/api"
 
 const CLASS_ID = "class_03"
 const SUBJECT = "math"
@@ -60,6 +60,44 @@ export default function AuthoringPage() {
     }
   }
 
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [bankItems, setBankItems] = useState<Array<{
+    question_bank_item_id: string; content: string; difficulty: string | null;
+    question_type: string; grade: string | null;
+  }>>([])
+  const [ocrHint, setOcrHint] = useState("")
+
+  async function handleUploadImage(file: File) {
+    setOcrHint("上传中...")
+    try {
+      const url = await uploadImage(file)
+      setOcrHint("图片已上传,OCR 识别中...")
+      const res = await recognizeQuestionImage(url)
+      if (res.text) {
+        setContent(res.text)
+        setOcrHint("✓ OCR 已回填(可修改后再添加)")
+      } else {
+        setOcrHint("OCR 未识别到文本,请手动输入(密钥未配置时为演示模式)")
+      }
+    } catch (e) {
+      setOcrHint(`上传/识别失败:${(e as Error).message}`)
+    }
+  }
+
+  async function handleLoadBank() {
+    if (!homeworkId) {
+      setError("请先创建作业")
+      return
+    }
+    setError("")
+    try {
+      const items = await searchQuestionBank(homeworkId, { subject: SUBJECT })
+      setBankItems(items)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
   async function handlePublish() {
     if (!homeworkId) return
     setPublishHint("发布中...")
@@ -109,6 +147,29 @@ export default function AuthoringPage() {
             onChange={(e) => setContent(e.target.value)}
           />
           <div className="flex gap-3 items-center text-sm">
+            <button
+              className="rounded border px-3 py-1 hover:bg-gray-100"
+              onClick={() => fileRef.current?.click()}
+            >
+              上传题目图(OCR 回填)
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) void handleUploadImage(f)
+                e.target.value = ""
+              }}
+            />
+            <button className="rounded border px-3 py-1 hover:bg-gray-100" onClick={handleLoadBank}>
+              从题库挑选
+            </button>
+            {ocrHint && <span className="text-xs text-muted-foreground">{ocrHint}</span>}
+          </div>
+          <div className="flex gap-3 items-center text-sm">
             <select value={qtype} onChange={(e) => setQtype(e.target.value)}>
               <option value="calculation">calculation</option>
               <option value="solution">solution</option>
@@ -125,6 +186,22 @@ export default function AuthoringPage() {
           </div>
         </div>
       </section>
+
+      {bankItems.length > 0 && (
+        <section className="rounded-lg border p-4 space-y-2">
+          <h2 className="font-semibold">题库选择(点击回填)</h2>
+          {bankItems.map((it) => (
+            <button
+              key={it.question_bank_item_id}
+              className="block w-full text-left border rounded px-3 py-2 text-sm hover:bg-gray-50"
+              onClick={() => setContent(it.content)}
+            >
+              [{it.difficulty ?? "?"}] {it.content.slice(0, 60)}
+              {it.content.length > 60 ? "..." : ""}
+            </button>
+          ))}
+        </section>
+      )}
 
       <section>
         <h2 className="text-lg font-semibold mb-2">题目列表</h2>

@@ -148,3 +148,67 @@ export async function getClassProfile(classId: string, subject: string) {
     attention_students: Array<{ student_id: string; weak_point_count: number; recent_score_rate: number | null; trend: string | null; reason_codes: string[] }>
   }>(`/profile/class/${classId}?subject=${subject}`)
 }
+
+// ---- 图片上传与 OCR(US1 三来源:题目图 → OCR 回填) ----
+export async function uploadImage(file: File): Promise<string> {
+  const form = new FormData()
+  form.append("file", file)
+  const res = await fetch(`${BASE}/uploads`, { method: "POST", body: form })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body?.detail?.message || `上传失败 ${res.status}`)
+  }
+  const json = await res.json()
+  return json.data?.url
+}
+
+export async function recognizeQuestionImage(imageUrl: string) {
+  return request<{ text: string; blocks: number }>(`/ocr`, {
+    method: "POST",
+    body: JSON.stringify({ image_url: imageUrl }),
+  })
+}
+
+export async function searchQuestionBank(
+  homeworkId: string,
+  params: { subject: string; difficulty?: string | null; knowledge_point?: string | null },
+) {
+  const qs = new URLSearchParams({ subject: params.subject })
+  if (params.difficulty) qs.set("difficulty", params.difficulty)
+  if (params.knowledge_point) qs.set("knowledge_point", params.knowledge_point)
+  return request<Array<{
+    question_bank_item_id: string
+    content: string
+    difficulty: string | null
+    question_type: string
+    grade: string | null
+  }>>(`/homework/${homeworkId}/question-bank?${qs.toString()}`)
+}
+
+// ---- 学生侧(US2:我的作业详情,含我的提交状态) ----
+export async function getStudentHomework(homeworkId: string) {
+  return request<{
+    homework: {
+      homework_id: string
+      name: string
+      subject: string
+      status: string
+      deadline: string | null
+      published_at: string | null
+    }
+    questions: Array<{
+      question_id: string
+      question_no: number
+      question_type: string
+      content: string
+      max_score: number
+      difficulty: string | null
+      my_submission: {
+        submission_id: string
+        status: string
+        current_stage: string
+        score: null
+      } | null
+    }>
+  }>(`/homework/${homeworkId}/for-student`)
+}

@@ -7,7 +7,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.teacher_copilot.api.identity import get_teacher_id
+from app.teacher_copilot.api.identity import get_student_id, get_teacher_id
+from sqlalchemy import select
+
+from app.teacher_copilot.db.engine import get_session
+from app.teacher_copilot.db.models.grading import Submission
+from app.teacher_copilot.db.models.homework import Homework, Question
 from app.teacher_copilot.api.response import fail, ok
 from app.teacher_copilot.errors import TcError
 from app.teacher_copilot.services.homework_service import HomeworkService
@@ -132,3 +137,42 @@ async def _next_id(prefix: str) -> str:
     import time
 
     return f"{int(time.time() * 1000) % 1000000:06d}"
+
+@router.get("/{homework_id}/for-student")
+async def homework_for_student(homework_id: str, student_id: str = Depends(get_student_id)):
+    """学生视角作业详情:题目列表 + 我在每题的提交状态(US2 学生作业页/批改页)。
+
+    学生属于班级成员即可查看该班作业;提交状态按 (question_id, student_id) 匹配。
+    """
+    async with get_session() as session:
+        hw = await session.scalar(select(Homework).where(Homework.homework_id == homework_id))
+        if hw is None:
+            raise HTTPException(404, detail=dict(code="HOMEWORK_NOT_FOUND", message="作业不存在"))
+        questions = await session.scalars(
+            select(Question).where(Question.homework_id == homework_id).order_by(Question.question_no)
+        )
+        subs = await session.scalars(
+            select(Submission).where(Submission.student_id == student_id, Submission.homework_id == homework_id)
+        )
+        by_q = {sub.question_id: sub for sub in subs}
+    return ok({
+        "homework": {
+            "homework_id": hw.homework_id, "name": hw.name, "class_id": hw.class_id,
+            "subject": hw.subject, "status": hw.status, "deadline": hw.deadline,
+            "published_at": hw.published_at,
+        },
+        "questions": [
+            {
+                "question_id": q.question_id, "question_no": q.question_no,
+                "question_type": q.question_type, "content": q.content,
+                "max_score": q.max_score, "difficulty": q.difficulty,
+                "my_submission": {
+                    "submission_id": sub.submission_id,
+                    "status": sub.status,
+                    "current_stage": sub.current_stage,
+                    "score": None,
+                } if (sub := by_q.get(q.question_id)) else None,
+            }
+            for q in questions
+        ],
+    })
