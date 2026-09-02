@@ -1,5 +1,16 @@
 # AI Teacher Copilot：UI、Figma 与 DeerFlow Frontend 复用映射
 
+<img width="961" height="631" alt="image" src="https://github.com/user-attachments/assets/386ab9d4-41ae-4841-a308-b00f531b303a" />
+
+<img width="961" height="640" alt="image" src="https://github.com/user-attachments/assets/94eb00e4-cbcb-4cf7-8ebc-8102f31ef1e0" />
+<img width="963" height="644" alt="image" src="https://github.com/user-attachments/assets/07f9cd40-95c8-4a81-bc24-f9d4f7fcc51b" />
+
+<img width="968" height="637" alt="image" src="https://github.com/user-attachments/assets/28b9c602-b2ea-4831-ab9c-bd430b534a76" />
+<img width="958" height="640" alt="image" src="https://github.com/user-attachments/assets/33712d66-9ae3-4d2e-b2e2-946f92b27e93" />
+<img width="959" height="646" alt="image" src="https://github.com/user-attachments/assets/3e60bbf8-3915-4987-ab5a-247454a3f156" />
+<img width="958" height="640" alt="image" src="https://github.com/user-attachments/assets/d18ef4e1-2433-4ff9-b075-17978488a3fc" />
+<img width="965" height="634" alt="image" src="https://github.com/user-attachments/assets/f9f8edfd-8c5b-4fe6-8528-3d79fe66da82" />
+
 ## 1. 文档目的
 
 本文件不定义新的业务规则、数据 Schema、Agent 架构或画像算法。
