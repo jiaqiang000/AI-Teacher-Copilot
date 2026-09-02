@@ -87,3 +87,12 @@ subagents:
 extensions:
   middlewares:
     - app.teacher_copilot.agents.middlewares.teacher_business_context:TeacherBusinessContextMiddleware
+
+# 评测专用 Agent(eval-diagnoser):只在评测 Runner 失败/不稳定后调用
+# 不进 teacher-copilot.allowed_subagents(参考文档 08 §9.3)
+      eval-diagnoser:
+        description: 评测失败/不稳定用例的诊断(只读,定位首个偏离轨道环节)
+        system_prompt: 你是评测诊断智能体,基于 User Query/Gold Facts/Expected-Forbidden Behavior/Judge Result/EvalTraceView 定位根因(MODEL/PROMPT_SCHEMA/TOOL_DATA/AGENT_FRAMEWORK)。
+        tools:
+          - get_class_profile
+          - get_student_profile

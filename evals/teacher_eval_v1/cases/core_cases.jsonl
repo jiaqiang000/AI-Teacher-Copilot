@@ -1,0 +1,91 @@
+# Teacher Agent 核心评测用例(参考文档 08 §4/§5)
+# 统一结构:case_id/level/query/snapshot_id/gold_facts/expected_behavior/forbidden_behavior/result_requirements
+{"case_id": "T-OBJ-001", "level": "L1", "query": "张三有哪些薄弱知识点?",
+ "snapshot_id": "teacher_eval_v1",
+ "expected_behavior": {"execution_level": "L1", "required_tools": ["list_class_students", "get_student_profile"]},
+ "forbidden_behavior": ["ask_clarification", "task"],
+ "result_requirements": ["返回张三的 weak_points,不猜测 student_id"]}
+{"case_id": "T-OBJ-002", "level": "L1", "query": "看看王强最近数学怎么样。",
+ "snapshot_id": "teacher_eval_v1",
+ "gold_facts": {"names": ["stu_026 王强", "stu_027 王强"]},
+ "expected_behavior": {"execution_level": "L1", "required_tools": ["list_class_students", "ask_clarification"]},
+ "forbidden_behavior": ["task", "自动选任一候选"],
+ "result_requirements": ["存在两个同名学生时先 HITL 确认"]}
+{"case_id": "T-L1-001", "level": "L1", "query": "八三班这次数学作业完成率是多少?",
+ "snapshot_id": "teacher_eval_v1",
+ "gold_facts": {"completion_rate": 0.90, "submitted": 27, "assigned": 30},
+ "expected_behavior": {"execution_level": "L1", "required_tools": ["get_homework_analysis"]},
+ "forbidden_behavior": ["get_class_profile", "task"],
+ "result_requirements": ["回答 90%"]}
+{"case_id": "T-L1-002", "level": "L1", "query": "第 8 题错误率多少?",
+ "snapshot_id": "teacher_eval_v1",
+ "gold_facts": {"error_rate": 0.6667, "common_error": "SIGN_ERROR"},
+ "expected_behavior": {"execution_level": "L1", "required_tools": ["get_question_analysis"]},
+ "forbidden_behavior": ["直接猜 q008", "ask_clarification(无歧义时)"],
+ "result_requirements": ["error_rate 66.67%,SIGN_ERROR"]}
+{"case_id": "T-L2-001", "level": "L2", "query": "帮我分析一下张三最近数学学习情况,看看主要问题是什么。",
+ "snapshot_id": "teacher_eval_v1",
+ "gold_facts": {"weekly_attention_students": ["stu_003", "stu_011", "stu_018", "stu_024"]},
+ "expected_behavior": {"execution_level": "L2", "skills": ["student-diagnosis"],
+  "required_tools": ["get_student_profile", "get_student_grading_history"]},
+ "forbidden_behavior": ["无历史证据只复述 Profile", "task"],
+ "result_requirements": ["必有历史证据"]}
+{"case_id": "T-L2-002", "level": "L2", "query": "李四数学最近怎么样?",
+ "snapshot_id": "teacher_eval_v1",
+ "gold_facts": {"weak_point": false, "recurring_error": false, "trend": "stable"},
+ "expected_behavior": {"execution_level": "L2", "skills": ["student-diagnosis"]},
+ "forbidden_behavior": ["把单次错误判为长期薄弱"],
+ "result_requirements": ["明确区分偶发错误与长期薄弱"]}
+{"case_id": "T-L2-004", "level": "L2", "query": "分析一下这次作业应该怎么讲评?",
+ "snapshot_id": "teacher_eval_v1",
+ "expected_behavior": {"execution_level": "L2", "skills": ["homework-review"],
+  "required_tools": ["get_homework_analysis", "get_question_analysis", "get_class_profile"]},
+ "forbidden_behavior": ["把一次低表现直接升级为长期 weak_point"],
+ "result_requirements": ["讲评优先级 + 区分本次/长期"]}
+{"case_id": "T-L5-001", "level": "L5", "query": "分析这次作业的问题,然后根据班级情况给学生安排分层练习。",
+ "snapshot_id": "teacher_eval_v1",
+ "expected_behavior": {"execution_level": "L5", "skills": ["homework-review", "differentiated-practice"]},
+ "forbidden_behavior": ["task", "把 Homework question_id 当 QuestionBankItem"],
+ "result_requirements": ["作业分析 + 分层练习"]}
+{"case_id": "T-L5-002", "level": "L5", "query": "作业讲评后找类似题。",
+ "snapshot_id": "teacher_eval_v1",
+ "expected_behavior": {"execution_level": "L4", "skills": ["homework-review"],
+  "required_tools": ["search_question_bank"]},
+ "forbidden_behavior": ["task", "返回非 QuestionBankItem"],
+ "result_requirements": ["题目来自 Fixture 题库"]}
+{"case_id": "T-L6-001", "level": "L6", "query": "帮我做一下八三班这周数学的整体复盘,看看全班主要薄弱点,重点关注哪些学生。",
+ "snapshot_id": "teacher_eval_v1",
+ "gold_facts": {"weekly_attention_students": ["stu_003", "stu_011", "stu_018", "stu_024"]},
+ "expected_behavior": {"execution_level": "L6", "required_tools": ["list_class_homeworks", "get_homework_analysis", "get_class_profile"],
+  "required_subagents": ["diagnosis-worker"]},
+ "forbidden_behavior": ["一开始对全班 30 人全部委派", "把 HomeworkAnalysis.attention 等同 weekly"],
+ "result_requirements": ["覆盖 4 个周度重点学生,先筛选再并行"]}
+{"case_id": "T-L6-002", "level": "L6", "query": "根据八三班每个学生最近的学习情况,给每个人安排针对性练习。",
+ "snapshot_id": "teacher_eval_v1",
+ "expected_behavior": {"execution_level": "L6", "required_tools": ["list_class_students"],
+  "required_subagents": ["practice-worker"]},
+ "forbidden_behavior": ["根据 student_count 猜身份", "漏学生"],
+ "result_requirements": ["完整覆盖 30 名学生,题目匹配目标知识点/难度"]}
+{"case_id": "T-L7-001", "level": "L7", "query": "帮我把八三班这周数学学习情况完整复盘,并生成下周分层练习。",
+ "snapshot_id": "teacher_eval_v1",
+ "expected_behavior": {"execution_level": "L7", "required_subagents": ["reviewer"]},
+ "forbidden_behavior": ["普通任务默认触发 reviewer"],
+ "result_requirements": ["大型方案交付前经 Reviewer 复核"]}
+{"case_id": "T-L7-002", "level": "L7", "query": "分析一下张三最近数学学习情况。",
+ "snapshot_id": "teacher_eval_v1",
+ "expected_behavior": {"execution_level": "L2", "skills": ["student-diagnosis"]},
+ "forbidden_behavior": ["task(subagent_type='reviewer')"],
+ "result_requirements": ["普通单学生诊断不触发 Reviewer"]}
+{"case_id": "T-MEM-001", "level": "L5", "query": "帮我看看今天这次作业。",
+ "snapshot_id": "teacher_eval_v1",
+ "memory": "以后做作业分析时先告诉我最值得课堂讲的三个问题,不用写太长。",
+ "expected_behavior": {"execution_level": "L2", "skills": ["homework-review"]},
+ "forbidden_behavior": ["Memory 覆盖业务事实"],
+ "result_requirements": ["按偏好组织回答,数据仍来自 Tool"]}
+{"case_id": "T-MEM-002", "level": "L5", "query": "李四是不是一直很差?",
+ "snapshot_id": "teacher_eval_v1",
+ "memory": "李四数学一直比较差。",
+ "gold_facts": {"weak_point": false, "recurring_error": false},
+ "expected_behavior": {"execution_level": "L2"},
+ "forbidden_behavior": ["Memory 覆盖当前业务事实"],
+ "result_requirements": ["以 get_student_profile + history 为准"]}

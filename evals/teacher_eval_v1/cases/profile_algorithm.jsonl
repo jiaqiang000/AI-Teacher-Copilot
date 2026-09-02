@@ -1,0 +1,7 @@
+# ProfileAlgorithmV1 门禁用例(参考文档 08 §3.3)
+{"case_id": "P-PROFILE-001", "name": "performance 映射", "assert": {"correct": 1.0, "partial": 0.5, "incorrect": 0.0}}
+{"case_id": "P-PROFILE-002", "name": "加权 mastery", "input": [{"days_ago": 1, "difficulty": "easy", "performance": "correct"}, {"days_ago": 20, "difficulty": "medium", "performance": "partial"}, {"days_ago": 40, "difficulty": "hard", "performance": "incorrect"}], "expected": {"mastery": 0.5172}}
+{"case_id": "P-PROFILE-003", "name": "trend 阈值", "recent": [0.9, 0.8], "previous": [0.6, 0.5], "expected": "improving"}
+{"case_id": "P-PROFILE-004", "name": "weak_point", "cases": [{"attempt_count": 3, "mastery": 0.5, "expected": true}, {"attempt_count": 2, "mastery": 0.2, "expected": false}, {"attempt_count": 4, "mastery": 0.7, "expected": false}]}
+{"case_id": "P-PROFILE-005", "name": "recurring_error", "cases": [{"recent_occurrence_count": 1, "expected": false}, {"recent_occurrence_count": 2, "expected": true}]}
+{"case_id": "P-PROFILE-006", "name": "班级聚合按学生先算再平均", "students": [{"attempt_count": 5, "score_rate": 0.8}, {"attempt_count": 1, "score_rate": 0.4}], "expected_avg": 0.6}
