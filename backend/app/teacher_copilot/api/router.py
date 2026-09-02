@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.teacher_copilot.api.routers import homework, profile, submissions
+from app.teacher_copilot.api.routers import homework, profile, submissions, uploads
 
 router = APIRouter()
 router.include_router(homework.router)
 router.include_router(submissions.router)
 router.include_router(profile.router)
+router.include_router(uploads.router)
 
 
 @router.get("/healthz")

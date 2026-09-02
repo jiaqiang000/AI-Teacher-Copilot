@@ -53,6 +53,12 @@ class AppConfig:
     ocr_api_key: str = field(default_factory=lambda: _env("OCR_API_KEY"))
     ocr_model: str = field(default_factory=lambda: _env("OCR_MODEL", "glm-ocr"))
 
+    # ----- 阿里云 OSS(图片上传,卡点:AK/SK 待用户提供) -----
+    oss_access_key_id: str = field(default_factory=lambda: _env("OSS_ACCESS_KEY_ID"))
+    oss_access_key_secret: str = field(default_factory=lambda: _env("OSS_ACCESS_KEY_SECRET"))
+    oss_bucket: str = field(default_factory=lambda: _env("OSS_BUCKET"))
+    oss_endpoint: str = field(default_factory=lambda: _env("OSS_ENDPOINT"))
+
     # ----- 评测(可选) -----
     langfuse_enabled: bool = field(default_factory=lambda: _env("LANGFUSE_ENABLED", "0") == "1")
 
