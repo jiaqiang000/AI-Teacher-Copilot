@@ -80,6 +80,8 @@ export const VirtualMessageList = forwardRef<
   const virtualizer = useVirtualizer({
     count: groups.length,
     estimateSize: () => ESTIMATED_ROW_HEIGHT,
+    // @types/react 19.2 的 Key 联合新增 optimisticKey,与 tanstack 泛型不一致(上游兼容)
+    // @ts-expect-error
     getItemKey,
     getScrollElement: () => scrollRef.current,
     overscan: 8,
