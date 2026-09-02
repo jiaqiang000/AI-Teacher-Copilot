@@ -106,7 +106,7 @@ export default function StudentGradingPage() {
     }
   }
 
-  const stageIndex = STAGES.findIndex((s) => s.key === stage)
+  const stageIndex = status === "SUCCEEDED" ? STAGES.length : STAGES.findIndex((s) => s.key === stage)
 
   return (
     <div className="p-8 space-y-5 max-w-3xl">
