@@ -53,6 +53,11 @@ class ListClassStudentsInput(BaseModel):
     class_id: str = Field(description="班级唯一 ID")
 
 
+class ListClassesInput(BaseModel):
+    """班级发现输入:按名称关键字查找班级。"""
+    keyword: str = Field(default="", description="班级名称关键字,如\"八三班\"\"三班\";空字符串返回全部")
+
+
 class ListClassHomeworksInput(BaseModel):
     """班级作业列表输入。"""
     class_id: str = Field(description="班级唯一 ID")

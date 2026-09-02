@@ -12,9 +12,32 @@ from sqlalchemy import select
 from app.teacher_copilot.api.response import fail, ok
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.homework import Homework
-from app.teacher_copilot.db.models.org import ClassStudent, Student
+from app.teacher_copilot.db.models.org import ClassRoom, ClassStudent, Student
 from app.teacher_copilot.errors import TcError
-from app.teacher_copilot.tools.schemas.inputs import ListClassHomeworksInput, ListClassStudentsInput
+from app.teacher_copilot.tools.schemas.inputs import (
+    ListClassesInput,
+    ListClassHomeworksInput,
+    ListClassStudentsInput,
+)
+
+
+@tool("list_classes", args_schema=ListClassesInput)
+async def list_classes(keyword: str = "") -> dict:
+    """按名称关键字查询真实班级列表(谁的名字带这个关键字)。
+
+    教师提到"八三班/三班/某班"等名称时,先调用本工具把班名解析为 class_id,
+    再把 class_id 传给 list_class_students / list_class_homeworks / get_class_profile。
+    返回为空表示关键字无匹配,此时应请教师确认班级名称。
+    """
+    try:
+        async with get_session() as session:
+            stmt = select(ClassRoom.class_id, ClassRoom.name).order_by(ClassRoom.class_id)
+            if keyword:
+                stmt = stmt.where(ClassRoom.name.contains(keyword))
+            rows = list(await session.execute(stmt))
+            return ok([{"class_id": cid, "name": name} for cid, name in rows])
+    except TcError as e:
+        return fail(e)
 
 
 @tool("list_class_students", args_schema=ListClassStudentsInput)

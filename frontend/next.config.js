@@ -48,6 +48,11 @@ const config = {
         source: "/api/langgraph/:path*",
         destination: `${gatewayURL}/api/:path*`,
       });
+      // Teacher Copilot 业务 API 同源转发(V2,与 langgraph 同机制)
+      rewrites.push({
+        source: "/api/teacher-copilot/:path*",
+        destination: `${gatewayURL}/api/teacher-copilot/:path*`,
+      });
     }
 
     if (!process.env.NEXT_PUBLIC_BACKEND_BASE_URL) {
