@@ -3,7 +3,7 @@
 
 import type { GradingResult, HomeworkAnalysis, StudentProfile } from "./types"
 
-const BASE = (process.env.NEXT_PUBLIC_TC_API_BASE || "/api/teacher-copilot").replace(/\/$/, "")
+const BASE = (process.env.NEXT_PUBLIC_TC_API_BASE || "http://127.0.0.1:8100").replace(/\/$/, "") + "/api/teacher-copilot"
 const TEACHER_ID = process.env.NEXT_PUBLIC_TC_TEACHER_ID || "teacher_01"
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
