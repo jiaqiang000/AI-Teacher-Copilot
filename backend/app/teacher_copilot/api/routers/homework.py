@@ -1,14 +1,13 @@
 """作业与题目业务 API(教师侧,FR-001~007)。
 
-路由前缀统一 /api/teacher-copilot/homework;认证身份由 DeerFlow Gateway
-AuthMiddleware 提供,本层用 header X-Teacher-Id 作为 MVP 可信身份占位
-(实现阶段按 DeerFlow Runtime Context 替换,参考 permission_service 注释)。
+路由前缀统一 /api/teacher-copilot/homework;认证身份由 DeerFlow Runtime 登录态提供(identity.py:登录用户 → AccountLink → teacher_id)。
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.teacher_copilot.api.identity import get_teacher_id
 from app.teacher_copilot.api.response import fail, ok
 from app.teacher_copilot.errors import TcError
 from app.teacher_copilot.services.homework_service import HomeworkService
@@ -22,18 +21,18 @@ router = APIRouter(prefix="/api/teacher-copilot/homework")
 @router.post("/")
 async def create_homework(
     body: dict,
-    x_teacher_id: str = Header(default="teacher_01"),
+    teacher_id: str = Depends(get_teacher_id),
 ):
     """创建草稿作业。body: {name, class_id, subject, deadline?}"""
     async with TeacherPermissionService() as perm:
-        await perm.ensure_teacher(x_teacher_id)
-        await perm.ensure_class_owned(x_teacher_id, body["class_id"])
+        await perm.ensure_teacher(teacher_id)
+        await perm.ensure_class_owned(teacher_id, body["class_id"])
     try:
         async with HomeworkService() as svc:
             hw = await svc.create_homework(
                 homework_id=f"hw_{await _next_id('hw')}",
                 name=body["name"], class_id=body["class_id"],
-                teacher_id=x_teacher_id, subject=body["subject"],
+                teacher_id=teacher_id, subject=body["subject"],
                 deadline=body.get("deadline"),
             )
         return ok({"homework_id": hw.homework_id, "status": hw.status})
@@ -42,11 +41,11 @@ async def create_homework(
 
 
 @router.get("/{homework_id}")
-async def get_homework(homework_id: str, x_teacher_id: str = Header(default="teacher_01")):
+async def get_homework(homework_id: str, teacher_id: str = Depends(get_teacher_id)):
     """读取作业与题目列表。"""
     try:
         async with TeacherPermissionService() as perm:
-            await perm.ensure_homework_owned(x_teacher_id, homework_id)
+            await perm.ensure_homework_owned(teacher_id, homework_id)
         async with HomeworkService() as svc:
             hw = await svc.get_homework(homework_id)
             questions = await svc.list_questions(homework_id)
@@ -69,10 +68,10 @@ async def get_homework(homework_id: str, x_teacher_id: str = Header(default="tea
 
 
 @router.post("/{homework_id}/questions")
-async def add_question(homework_id: str, body: dict, x_teacher_id: str = Header(default="teacher_01")):
+async def add_question(homework_id: str, body: dict, teacher_id: str = Depends(get_teacher_id)):
     """添加题目(手动/图片 OCR 后确认)。body: {subject, question_type, content, max_score, difficulty?}"""
     async with TeacherPermissionService() as perm:
-        hw = await perm.ensure_homework_owned(x_teacher_id, homework_id)
+        hw = await perm.ensure_homework_owned(teacher_id, homework_id)
     try:
         async with QuestionService() as svc:
             q = await svc.create_question(
@@ -92,11 +91,11 @@ async def add_question(homework_id: str, body: dict, x_teacher_id: str = Header(
 async def search_bank(
     homework_id: str, subject: str, difficulty: str | None = None,
     knowledge_point: str | None = None,
-    x_teacher_id: str = Header(default="teacher_01"),
+    teacher_id: str = Depends(get_teacher_id),
 ):
     """题库检索(Drawer 用;与 Agent Tool 共享 QuestionBankService)。"""
     async with TeacherPermissionService() as perm:
-        await perm.ensure_homework_owned(x_teacher_id, homework_id)
+        await perm.ensure_homework_owned(teacher_id, homework_id)
     try:
         async with QuestionBankService() as svc:
             items = await svc.search(
@@ -116,11 +115,11 @@ async def search_bank(
 
 
 @router.post("/{homework_id}/publish")
-async def publish(homework_id: str, x_teacher_id: str = Header(default="teacher_01")):
+async def publish(homework_id: str, teacher_id: str = Depends(get_teacher_id)):
     """发布作业(校验通过后置 PUBLISHED)。"""
     try:
         async with TeacherPermissionService() as perm:
-            await perm.ensure_homework_owned(x_teacher_id, homework_id)
+            await perm.ensure_homework_owned(teacher_id, homework_id)
         async with HomeworkService() as svc:
             hw = await svc.publish(homework_id)
         return ok({"homework_id": hw.homework_id, "status": hw.status})

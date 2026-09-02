@@ -53,3 +53,18 @@ class ClassStudent(Base):
     class_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     student_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     joined_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class AccountLink(Base):
+    """DeerFlow 登录用户 → 业务对象映射(T011)。
+
+    user_id 为 DeerFlow users.id(uuid);biz_type 为 teacher/student;
+    biz_id 为业务侧 teacher_01 / stu_003。登录态经此表获得可信业务身份。
+    """
+
+    __tablename__ = "account_link"
+    __table_args__ = (UniqueConstraint("biz_type", "biz_id", name="uq_account_link_biz"),)
+
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    biz_type: Mapped[str] = mapped_column(String(16))
+    biz_id: Mapped[str] = mapped_column(String(64))

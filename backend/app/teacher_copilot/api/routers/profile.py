@@ -2,17 +2,18 @@
 
 - profile.py:学生/班级画像 + 批改历史(T058)
 - analysis.py:作业分析/题目分析(T051)
-认证身份:MVP 用 Header X-Teacher-Id 占位(实现阶段接 DeerFlow Runtime Context)。
+认证身份:DeerFlow Runtime 登录态(identity.py → AccountLink → teacher_id)。
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.grading import GradingResult
 from app.teacher_copilot.db.models.homework import Question
+from app.teacher_copilot.api.identity import get_teacher_id
 from app.teacher_copilot.errors import TcError
 from app.teacher_copilot.services.analysis_service import AnalysisCalculationV1
 from app.teacher_copilot.services.permission_service import TeacherPermissionService
@@ -24,13 +25,13 @@ router = APIRouter(prefix="/api/teacher-copilot")
 @router.get("/profile/student/{student_id}")
 async def student_profile(
     student_id: str, subject: str,
-    x_teacher_id: str = Header(default="teacher_01"),
+    teacher_id: str = Depends(get_teacher_id),
 ):
     """获取学生画像(StudentProfile)。"""
     try:
         async with TeacherPermissionService() as perm:
             # student 校验(简化:确认教师存在即可,班级归属查询在真实实现中扩展)
-            await perm.ensure_teacher(x_teacher_id)
+            await perm.ensure_teacher(teacher_id)
         async with ProfileAlgorithmV1() as algo:
             profile = await algo.compute_student(student_id, subject)
         return {"success": True, "data": profile}
@@ -41,12 +42,12 @@ async def student_profile(
 @router.get("/profile/class/{class_id}")
 async def class_profile(
     class_id: str, subject: str,
-    x_teacher_id: str = Header(default="teacher_01"),
+    teacher_id: str = Depends(get_teacher_id),
 ):
     """获取班级画像(ClassProfile)。"""
     try:
         async with TeacherPermissionService() as perm:
-            await perm.ensure_teacher(x_teacher_id)
+            await perm.ensure_teacher(teacher_id)
         async with ProfileAlgorithmV1() as algo:
             profile = await algo.compute_class(class_id, subject)
         return {"success": True, "data": profile}
@@ -57,12 +58,12 @@ async def class_profile(
 @router.get("/profile/student/{student_id}/history")
 async def student_history(
     student_id: str, subject: str, limit: int = 20,
-    x_teacher_id: str = Header(default="teacher_01"),
+    teacher_id: str = Depends(get_teacher_id),
 ):
     """学生批改历史(GradingResult[],用于证据下钻)。"""
     try:
         async with TeacherPermissionService() as perm:
-            await perm.ensure_teacher(x_teacher_id)
+            await perm.ensure_teacher(teacher_id)
         async with get_session() as session:
             rows = await session.scalars(
                 select(GradingResult)
@@ -91,12 +92,12 @@ async def student_history(
 @router.get("/analysis/homework/{homework_id}")
 async def homework_analysis(
     homework_id: str, class_id: str,
-    x_teacher_id: str = Header(default="teacher_01"),
+    teacher_id: str = Depends(get_teacher_id),
 ):
     """作业分析(HomeworkAnalysis,即时聚合)。"""
     try:
         async with TeacherPermissionService() as perm:
-            await perm.ensure_homework_owned(x_teacher_id, homework_id)
+            await perm.ensure_homework_owned(teacher_id, homework_id)
         async with AnalysisCalculationV1() as algo:
             analysis = await algo.compute_homework_analysis(homework_id, class_id)
         return {"success": True, "data": analysis}
@@ -107,12 +108,12 @@ async def homework_analysis(
 @router.get("/analysis/question/{question_id}")
 async def question_analysis(
     question_id: str, homework_id: str, class_id: str,
-    x_teacher_id: str = Header(default="teacher_01"),
+    teacher_id: str = Depends(get_teacher_id),
 ):
     """单题下钻分析(QuestionAnalysis,即时聚合)。"""
     try:
         async with TeacherPermissionService() as perm:
-            await perm.ensure_question_owned(x_teacher_id, question_id)
+            await perm.ensure_question_owned(teacher_id, question_id)
         async with AnalysisCalculationV1() as algo:
             # 复用作业分析,过滤该题
             full = await algo.compute_homework_analysis(homework_id, class_id)

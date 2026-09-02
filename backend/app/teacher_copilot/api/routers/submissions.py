@@ -1,13 +1,14 @@
 """Submission 业务 API:提交 / 查询 / SSE 事件 / 批改结果(按 contracts/grading-api.md)。
 
-MVP 认证身份占位:Header X-Student-Id(实现阶段接 DeerFlow Runtime Context)。
+认证身份:DeerFlow Runtime 登录态(identity.py → AccountLink → student_id)。
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 
+from app.teacher_copilot.api.identity import get_student_id
 from app.teacher_copilot.api.response import fail, ok
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.grading import GradingResult, OcrResult
@@ -23,7 +24,7 @@ router = APIRouter(prefix="/api/teacher-copilot/submissions")
 @router.post("/")
 async def submit(
     body: dict,
-    x_student_id: str = Header(default="stu_001"),
+    student_id: str = Depends(get_student_id),
 ):
     """学生提交答案图片(立即返回,后台异步批改)。
 
@@ -32,7 +33,7 @@ async def submit(
     try:
         async with SubmissionService() as svc:
             sub, created = await svc.submit(
-                student_id=x_student_id,
+                student_id=student_id,
                 question_id=body["question_id"],
                 homework_id=body["homework_id"],
                 image_url=body["image_url"],

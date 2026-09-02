@@ -1,7 +1,7 @@
 """图片上传 API(V2,contracts/upload-api.md)。
 
 POST /api/teacher-copilot/uploads —— multipart file → OSS → 公网 URL。
-身份:MVP 过渡期 header 占位,正式版由登录态取(见 T011)。
+身份:仅要求已登录(AuthMiddleware);身份校验在各业务接口(创建题目/提交作答)处完成。
 """
 
 from __future__ import annotations
@@ -9,8 +9,9 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, Request
 
+from app.teacher_copilot.api.identity import reject_legacy_identity_headers
 from app.teacher_copilot.api.response import fail, ok
 from app.teacher_copilot.errors import InvalidArgument, TcError
 from app.teacher_copilot.services.oss_service import OssService
@@ -25,9 +26,10 @@ MAX_SIZE = 10 * 1024 * 1024  # 10MB
 @router.post("/uploads")
 async def upload_image(
     file: UploadFile,
-    x_teacher_id: str = Header(default="teacher_01"),  # TODO: V2 T011 改登录态身份
+    request: Request,
 ):
-    """上传图片,返回 OSS 公网 URL。"""
+    """上传图片,返回 OSS 公网 URL(仅要求登录,业务权限交给后续接口)。"""
+
     try:
         name = (file.filename or "upload.jpg").lower()
         suffix = Path(name).suffix
