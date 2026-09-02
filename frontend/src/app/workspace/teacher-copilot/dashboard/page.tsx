@@ -1,24 +1,22 @@
-// 教师工作台(对照 Figma 01:统计卡 + 我的班级 + 最近作业)
+"use client"
+// 教师工作台(对照 Figma 01)- 客户端拉取(带登录态 cookie,经同源代理到 Gateway)
+import { useEffect, useState } from "react"
 import { getClassProfile, getHomeworkAnalysis } from "@/core/teacher-copilot/api"
 
-// 演示数据默认值(后端 seed:class_03 八三班 / hw_004)
-const CLASS_ID = process.env.NEXT_PUBLIC_TC_CLASS_ID || "class_03"
-const SUBJECT = process.env.NEXT_PUBLIC_TC_SUBJECT || "math"
+const CLASS_ID = "class_03"
+const SUBJECT = "math"
 
-export default async function DashboardPage() {
-  // 工作台摘要:班级画像 + 最近作业分析(聚合,不新增算法)
-  let profile
-  try {
-    profile = await getClassProfile(CLASS_ID, SUBJECT)
-  } catch {
-    profile = null
-  }
-  let hwAnalysis
-  try {
-    hwAnalysis = await getHomeworkAnalysis("hw_004", CLASS_ID)
-  } catch {
-    hwAnalysis = null
-  }
+export default function DashboardPage() {
+  const [profile, setProfile] = useState<Awaited<ReturnType<typeof getClassProfile>> | null>(null)
+  const [hwAnalysis, setHwAnalysis] = useState<Awaited<ReturnType<typeof getHomeworkAnalysis>> | null>(null)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    Promise.all([
+      getClassProfile(CLASS_ID, SUBJECT).catch((e) => { setError((e as Error).message); return null }),
+      getHomeworkAnalysis("hw_004", CLASS_ID).catch((e) => { setError((e as Error).message); return null }),
+    ]).then(([p, a]) => { setProfile(p); setHwAnalysis(a) })
+  }, [])
 
   const recentRate = profile?.overview?.avg_score_rate
   const attentionCount = profile?.attention_students?.length ?? 0
@@ -32,7 +30,6 @@ export default async function DashboardPage() {
         <p className="text-muted-foreground">今天先处理最值得关注的班级与作业</p>
       </header>
 
-      {/* 统计卡 */}
       <div className="grid grid-cols-4 gap-4">
         <StatCard label="班级" value="3" sub="当前授课" />
         <StatCard label="待批改作业" value="2" sub="今天截止" />
@@ -40,7 +37,6 @@ export default async function DashboardPage() {
         <StatCard label="本周平均得分" value={recentRate ? `${Math.round(recentRate * 100)}%` : "—"} sub="较上周 +3.2%" />
       </div>
 
-      {/* 我的班级 + 最近作业 */}
       <div className="grid grid-cols-2 gap-6">
         <section>
           <h2 className="text-lg font-semibold mb-3">我的班级</h2>
@@ -51,10 +47,12 @@ export default async function DashboardPage() {
         <section>
           <h2 className="text-lg font-semibold mb-3">最近作业</h2>
           <HomeworkCard name="hw_004 · 周末作业" completion={completionRate} />
-          <HomeworkCard name="hw_003 · 单元练习" completion={0.0} />
-          <HomeworkCard name="hw_002 · 方程巩固" completion={0.0} />
+          <HomeworkCard name="hw_003 · 单元练习" completion={null} />
+          <HomeworkCard name="hw_002 · 方程巩固" completion={null} />
         </section>
       </div>
+
+      {error && <p className="text-red-600 text-sm">数据加载失败: {error}</p>}
     </div>
   )
 }

@@ -3,7 +3,9 @@
 
 import type { GradingResult, HomeworkAnalysis, StudentProfile } from "./types"
 
-const BASE = (process.env.NEXT_PUBLIC_TC_API_BASE || "http://127.0.0.1:8100").replace(/\/$/, "") + "/api/teacher-copilot"
+// 同源相对路径:浏览器经 next.config rewrites(/api/teacher-copilot → Gateway)访问,
+// 自动携带登录 cookie;避免直连后端端口(跨域/无认证)问题。
+const BASE = "/api/teacher-copilot"
 const TEACHER_ID = process.env.NEXT_PUBLIC_TC_TEACHER_ID || "teacher_01"
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

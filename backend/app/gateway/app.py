@@ -197,6 +197,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
 
     # Load config and check necessary environment variables at startup.
+    # ---- Teacher Copilot:初始化业务数据库(与 DeerFlow 同进程,V2 集成) ----
+    try:
+        from app.teacher_copilot.config.settings import get_config as _tc_cfg
+        from app.teacher_copilot.db.engine import init_db as _tc_init_db
+
+        _tc = _tc_cfg()
+        await _tc_init_db(_tc.database_url, echo=_tc.database_echo)
+        from app.teacher_copilot.db import models as _tc_models  # noqa: F401 确保表注册
+    except Exception as exc:  # pragma: no cover - 业务库初始化失败不阻断核心启动
+        import logging
+
+        logging.getLogger("app.gateway").warning(
+            "Teacher Copilot DB init skipped: %s", exc
+        )
+
     # `startup_config` is a local snapshot used only for one-shot bootstrap
     # work (logging level, langgraph_runtime engines, channels). Request-time
     # config resolution always routes through `get_app_config()` in
