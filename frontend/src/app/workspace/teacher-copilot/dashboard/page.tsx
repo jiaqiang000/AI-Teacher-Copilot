@@ -30,6 +30,21 @@ export default function DashboardPage() {
         <p className="text-muted-foreground">今天先处理最值得关注的班级与作业</p>
       </header>
 
+      {/* 体验指引(US5:登录方式/建议步骤/角色切换) */}
+      <details className="rounded-lg border p-4 bg-muted/30 text-sm space-y-1">
+        <summary className="font-medium cursor-pointer">体验指引(点击展开)</summary>
+        <p className="text-muted-foreground">
+          <b>教师账号</b> teacher@demo.com / teacher123456 · <b>学生账号</b> student@demo.com / student123456
+        </p>
+        <p className="text-muted-foreground">
+          建议步骤:① 左侧"Teacher Copilot"→ 聊天页问"八三班《单元练习》完成率"→ ② 学生账号看作业与批改结果 →
+          ③ 教师出题(手动/题库/题目图 OCR)并发布 → ④ 学生上传作答(需配置 OSS)→ 查看新批改结果。
+        </p>
+        <p className="text-muted-foreground">
+          角色切换:退出登录后使用另一账号重新登录(DeerFlow 登录页右上角退出)。
+        </p>
+      </details>
+
       <div className="grid grid-cols-4 gap-4">
         <StatCard label="班级" value="3" sub="当前授课" />
         <StatCard label="待批改作业" value="2" sub="今天截止" />
