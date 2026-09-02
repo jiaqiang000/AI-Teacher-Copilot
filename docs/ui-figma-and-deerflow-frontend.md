@@ -112,6 +112,18 @@ Student
 08 · Student Grading
 ```
 
+当前 `01～06` Teacher Frames 使用统一 Teacher Workspace Sidebar。除工作台、班级、作业、学生、Teacher Copilot 等业务导航外，Sidebar 还包含“最近聊天”区域，用于表现历史 Teacher Copilot 会话入口。
+
+Figma 当前展示的：
+
+```text
+八三班最近学情
+hw_004 作业讲评
+张三数学诊断
+```
+
+只是历史会话标题的示例内容，用于表达列表与当前会话状态；实际前端内容由运行时 Teacher Copilot 会话产生。
+
 这里的 Frame Name 只是设计标识：
 
 ```text
@@ -156,6 +168,8 @@ Frame Name
 = 教师侧唯一 Agent Runtime 交互面
 = DeerFlow Thread / Run + teacher-copilot
 ```
+
+`01～06` Teacher 页面共享同一 Teacher Workspace Sidebar。Sidebar 一侧承载教师业务导航，另一部分提供“最近聊天”入口，帮助教师快速回到此前的 Teacher Copilot 会话；“最近聊天”不是新增的独立业务页面。
 
 ### 4.2 Student 页面
 
@@ -553,8 +567,11 @@ Workspace Layout
 Sidebar / SidebarInset
 Workspace Header
 基础导航交互
+Recent Chat / Thread History UI
 Settings / Toaster 等已有 Workspace 基础设施
 ```
+
+Teacher Workspace Sidebar 中的“最近聊天”优先复用 DeerFlow 已有的 Thread History / Recent Chat 前端能力。当前 DeerFlow `main` 中的 `RecentChatList` 可以作为实现阶段的直接复用参考；最终具体复用方式仍以编码时 DeerFlow current main 为准。
 
 Teacher Copilot 在其中增加教育业务导航和页面内容，不重新创建一套完全独立 App Shell。
 
