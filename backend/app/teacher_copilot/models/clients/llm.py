@@ -23,21 +23,53 @@ logger = logging.getLogger("teacher_copilot.llm")
 
 
 def _parse_json_robust(text: str) -> dict:
-    """容错解析模型 JSON:支持无包裹 JSON / ```json 块 / 说明文字+JSON。"""
+    """容错解析模型 JSON:支持无包裹 JSON / ```json 块 / 说明文字+JSON。
+
+    嵌套 JSON 用堆栈匹配外层大括号(非贪婪正则会截断嵌套结构)。
+    """
     raw = text.strip()
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
         pass
+    # 2) 提取 ```json ... ``` 代码块(取最后一个 ``` 块)
     code_block = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
     if code_block:
-        return json.loads(code_block.group(1))
-    start, end = raw.find("{"), raw.rfind("}")
-    if start >= 0 and end > start:
         try:
-            return json.loads(raw[start : end + 1])
+            return json.loads(code_block.group(1))
         except json.JSONDecodeError:
             pass
+    # 3) 堆栈匹配首个 { 到配对 } 的子串(处理任意嵌套)
+    start = raw.find("{")
+    if start >= 0:
+        depth = 0
+        end = -1
+        in_str = False
+        escape = False
+        for i in range(start, len(raw)):
+            ch = raw[i]
+            if in_str:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        if end > start:
+            try:
+                return json.loads(raw[start : end + 1])
+            except json.JSONDecodeError:
+                pass
     raise ValueError(f"模型输出不是合法 JSON: {raw[:200]}")
 
 
@@ -54,8 +86,14 @@ class LlmClient:
         return await self._generate_anthropic(prompt, system)
 
     async def generate_json(self, *, model_kind: str = "strong", prompt: str, system: str = "") -> dict:
-        """调用模型并强制 JSON 输出(与既有调用方兼容;system 透传)。"""
+        """调用模型并强制 JSON 输出(与既有调用方兼容;system 透传)。
+
+        模型偶发空/截断响应:空文本重试 1 次(宪法 X:记录重试)。
+        """
         text = await self.generate(prompt=prompt, system=system)
+        if not text.strip():
+            logger.warning("LLM 返回空文本,重试 1 次, prompt_len=%d", len(prompt))
+            text = await self.generate(prompt=prompt, system=system)
         return _parse_json_robust(text)
 
     async def _generate_anthropic(self, prompt: str, system: str) -> str:
