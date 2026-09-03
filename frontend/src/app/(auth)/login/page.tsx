@@ -213,9 +213,9 @@ export default function LoginPage() {
       />
       <div className="border-border/20 bg-background/5 w-full max-w-md space-y-6 rounded-3xl border p-8 backdrop-blur-sm">
         <div className="text-center">
-          <h1 className="text-foreground font-serif text-3xl">DeerFlow</h1>
+          <h1 className="text-foreground font-serif text-3xl">智能作业批改</h1>
           <p className="text-muted-foreground mt-2">
-            {isLogin ? t.login.signInTitle : t.login.createAccountTitle}
+            {isLogin ? "教师智能助手——让每一份作业都被看见" : "创建账号"}
           </p>
         </div>
 
@@ -307,63 +307,9 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        {ssoProviders.length > 0 && (
-          <div className="space-y-2">
-            {isLogin && (
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background text-muted-foreground px-2">
-                    {t.login.orContinueWith}
-                  </span>
-                </div>
-              </div>
-            )}
-            {showSsoHint && (
-              <p className="text-muted-foreground text-center text-sm">
-                {t.login.ssoHint}
-              </p>
-            )}
-            {ssoProviders.map((provider) => (
-              <Button
-                key={provider.id}
-                type="button"
-                variant="outline"
-                className="w-full"
-                disabled={loading}
-                onClick={() => {
-                  window.location.href = `/api/v1/auth/oauth/${provider.id}?next=${encodeURIComponent(redirectPath)}&remember_me=${String(rememberMe)}`;
-                }}
-              >
-                {t.login.continueWith(provider.display_name)}
-              </Button>
-            ))}
-          </div>
-        )}
+        {/* 003:品牌化隐藏 SSO 登录入口与注册引导,仅保留本地账号登录 */}
+        {false && <div className="hidden" />}
 
-        {regularSignupAllowed && (
-          <div className="text-center text-sm">
-            <button
-              type="button"
-              onClick={() => {
-                setIsLogin(!isLogin);
-                setError("");
-                setShowSsoHint(false);
-              }}
-              className="text-blue-500 hover:underline"
-            >
-              {isLogin ? t.login.noAccountSignUp : t.login.haveAccountSignIn}
-            </button>
-          </div>
-        )}
-
-        <div className="text-muted-foreground text-center text-xs">
-          <Link href="/" className="hover:underline">
-            {t.login.backToHome}
-          </Link>
-        </div>
       </div>
     </div>
   );
