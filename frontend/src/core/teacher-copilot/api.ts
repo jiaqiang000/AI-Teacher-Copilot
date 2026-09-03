@@ -213,3 +213,8 @@ export async function getStudentHomework(homeworkId: string) {
     }>
   }>(`/homework/${homeworkId}/for-student`)
 }
+
+// ---- 业务角色(003:角色分流事实源) ----
+export async function getAccountRole(): Promise<{ role: "teacher" | "student" | "none" }> {
+  return request<{ role: "teacher" | "student" | "none" }>(`/account/role`)
+}
