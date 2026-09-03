@@ -9,6 +9,8 @@ import { ModelLoadErrorBanner } from "@/components/workspace/model-load-error-ba
 import { SettingsDialogHost } from "@/components/workspace/settings";
 import { WorkspaceSettingsDeepLink } from "@/components/workspace/workspace-settings-deep-link";
 import { WorkspaceSidebar } from "@/components/workspace/workspace-sidebar";
+import { StudentShell } from "@/components/teacher-copilot/student-shell";
+import { getServerSideRole } from "@/core/teacher-copilot/server-role";
 
 function parseSidebarOpenCookie(
   value: string | undefined,
@@ -30,10 +32,15 @@ export async function WorkspaceContent({
     cookieStore.get("sidebar_state")?.value,
   );
 
+  // 003 US-C:按业务角色选择外壳 —— 学生为独立外壳(无教师导航/入口),
+  // 教师/未映射保持教师侧边栏(未映射场景极少,兜底可见完整导航以免误锁)。
+  const role = await getServerSideRole();
+  const SidebarShell = role === "student" ? StudentShell : WorkspaceSidebar;
+
   return (
     <QueryClientProvider>
       <SidebarProvider className="h-screen" defaultOpen={initialSidebarOpen}>
-        <WorkspaceSidebar />
+        <SidebarShell />
         <SidebarInset className="min-w-0">
           <GatewayOfflineBanner gatewayUnavailable={gatewayUnavailable} />
           <ModelLoadErrorBanner gatewayUnavailable={gatewayUnavailable} />
