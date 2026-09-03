@@ -1,8 +1,10 @@
 "use client"
 // 学生作业页(对照 Figma 07:完成进度 + 每题作答/批改状态 + 截止时间)
 // 真实数据:GET /homework/{id}/for-student(题目 + 我的提交状态)
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
+import { toast } from "sonner"
 import { getStudentHomework } from "@/core/teacher-copilot/api"
 
 const HW_ID = "hw_004"
@@ -17,6 +19,19 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
 export default function StudentHomeworkPage() {
   const [data, setData] = useState<Awaited<ReturnType<typeof getStudentHomework>> | null>(null)
   const [error, setError] = useState("")
+
+  // 003 T013:越权访问教师页面被守卫重定向回来 → 轻提示"无权限",2 秒自动消失。
+  const searchParams = useSearchParams()
+  const deniedToastShown = useRef(false)
+  useEffect(() => {
+    if (searchParams.get("denied") === "1" && !deniedToastShown.current) {
+      deniedToastShown.current = true
+      toast.warning("无权限", {
+        description: "这是教师功能页面,请使用教师账号访问。",
+        duration: 2000,
+      })
+    }
+  }, [searchParams])
 
   useEffect(() => {
     getStudentHomework(HW_ID)

@@ -7,6 +7,7 @@ import { getServerSideRole } from "@/core/teacher-copilot/server-role"
 export async function requireTeacherPage() {
   const role = await getServerSideRole()
   if (role === "student") {
-    redirect("/workspace/teacher-copilot/student/homework")
+    // denied=1:学生首页据此弹出"无权限"轻提示(2 秒自动消失,见 student/homework/page.tsx)
+    redirect("/workspace/teacher-copilot/student/homework?denied=1")
   }
 }
