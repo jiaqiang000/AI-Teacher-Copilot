@@ -17,6 +17,10 @@ dependencies = [
     "httpx>=0.28.0",
     "python-multipart>=0.0.31",
     "sse-starlette>=2.1.0",
+    # Teacher Copilot 图片上传(阿里云 OSS,用户提供 AK/SK 2026-09-02)
+    "oss2>=2.19.0",
+    # Teacher Copilot OCR(智谱 GLM-OCR 布局解析;官方包名 zai-sdk,import 名 zai;用户提供密钥 2026-09-02)
+    "zai-sdk>=0.2.3",
     # Direct dependency on purpose, even though FastAPI already pulls it in:
     # app/gateway/request_path.py imports the private
     # `starlette._utils.get_route_path` so the auth and CSRF predicates
