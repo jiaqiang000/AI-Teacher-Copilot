@@ -4,6 +4,7 @@
 // /api/:path* 代理到 Gateway;展示工具/技能执行步骤与真实回答。
 import { useCallback, useState } from "react"
 import { fetch as apiFetch } from "@/core/api/fetcher"
+import { MarkdownContent } from "@/components/workspace/messages/markdown-content"
 
 const QUICK = [
   "分析八三班长期学情",
@@ -137,11 +138,15 @@ export default function CopilotChatPage() {
         {messages.map((m, i) => (
           <div key={i} className={m.role === "user" ? "text-right" : "text-left"}>
             <div
-              className={`inline-block rounded-lg px-4 py-2 text-sm max-w-[75%] whitespace-pre-wrap ${
-                m.role === "user" ? "bg-gray-900 text-white" : "border"
+              className={`inline-block rounded-lg px-4 py-2 text-sm max-w-[75%] ${
+                m.role === "user" ? "bg-gray-900 text-white whitespace-pre-wrap" : "border"
               }`}
             >
-              {m.content}
+              {m.role === "user" ? (
+                m.content
+              ) : (
+                <MarkdownContent content={m.content} isLoading={false} />
+              )}
             </div>
             {m.role === "assistant" && m.steps && m.steps.length > 0 && (
               <div className="mt-1 text-xs text-muted-foreground">{m.steps.join(" → ")}</div>
