@@ -45,6 +45,25 @@ async def get_student_id(request: Request) -> str:
     return await _resolve_biz_id(request, "student")
 
 
+async def get_account_role(request: Request) -> dict:
+    """返回当前登录用户的业务角色(003 品牌与导航整合:角色分流用)。
+
+    只读查询 AccountLink;未登录 401;登录但无业务映射返回 role=none
+    (前端按未映射处理,不视为错误)。
+    """
+    user = await get_current_user_from_request(request)
+    if user is None:  # pragma: no cover - 依赖自身已抛 401
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    async with get_session() as session:
+        rows = list(await session.execute(
+            select(AccountLink.biz_type).where(AccountLink.user_id == str(user.id))
+        ))
+    role = "teacher" if "teacher" in [r[0] for r in rows] else (
+        "student" if "student" in [r[0] for r in rows] else "none"
+    )
+    return {"role": role}
+
+
 async def reject_legacy_identity_headers(request: Request) -> None:
     """全局依赖:若请求仍带旧身份头(可被伪造),直接拒绝,强制走登录态。"""
     if request.headers.get("X-Teacher-Id") or request.headers.get("X-Student-Id"):

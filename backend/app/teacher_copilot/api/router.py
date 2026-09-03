@@ -10,13 +10,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.teacher_copilot.api.identity import reject_legacy_identity_headers
-from app.teacher_copilot.api.routers import homework, profile, submissions, uploads
+from app.teacher_copilot.api.routers import account, homework, profile, submissions, uploads
 
 router = APIRouter(dependencies=[Depends(reject_legacy_identity_headers)])
 router.include_router(homework.router)
 router.include_router(submissions.router)
 router.include_router(profile.router)
 router.include_router(uploads.router)
+router.include_router(account.router)
 
 
 @router.get("/healthz")
