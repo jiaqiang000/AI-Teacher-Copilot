@@ -203,13 +203,10 @@ export default function LoginPage() {
 
   return (
     <div className="bg-background relative flex min-h-screen items-center justify-center overflow-x-hidden overflow-y-auto">
-      <FlickeringGrid
-        className="absolute inset-0 z-0 mask-[url(/images/deer.svg)] mask-size-[100vw] mask-center mask-no-repeat md:mask-size-[72vh]"
-        squareSize={4}
-        gridGap={4}
-        color={actualTheme === "dark" ? "white" : "black"}
-        maxOpacity={0.3}
-        flickerChance={0.25}
+      {/* 003:品牌化背景(无 Figma 稿)—— 径向渐变代替 DeerFlow 鹿纹网格 */}
+      <div
+        aria-hidden
+        className="absolute inset-0 z-0 bg-gradient-to-b from-background via-background to-primary/10"
       />
       <div className="border-border/20 bg-background/5 w-full max-w-md space-y-6 rounded-3xl border p-8 backdrop-blur-sm">
         <div className="text-center">
