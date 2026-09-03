@@ -37,6 +37,7 @@ MOCK_BLOCKS = [
 
 
 async def main() -> None:
+    """CLI 入口:运行批改链路 smoke 验证。"""
     from app.teacher_copilot.db.engine import create_all, dispose_db, get_session, init_db
     from app.teacher_copilot.db.models.grading import GradingResult, OcrResult, Submission
     from app.teacher_copilot.db.seed.demo import seed_demo

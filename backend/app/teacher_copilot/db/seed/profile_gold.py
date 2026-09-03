@@ -22,6 +22,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(mes
 
 
 async def main() -> None:
+    """CLI 入口:运行 profile_gold 数据生成脚本。"""
     from app.teacher_copilot.db.engine import create_all, dispose_db, get_session, init_db
     from app.teacher_copilot.db.models.grading import (
         GradingResult, GradingResultError, GradingResultKnowledgePoint, Submission,

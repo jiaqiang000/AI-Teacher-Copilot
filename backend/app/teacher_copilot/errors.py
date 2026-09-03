@@ -20,45 +20,54 @@ class TcError(Exception):
             self.code = code
 
     def to_dict(self) -> dict:
+        """转为 API/前端统一错误结构。"""
         return {"code": self.code, "message": self.message}
 
 
 class InvalidArgument(TcError):
+    """参数非法(HTTP 400),如缺少必填字段、文件类型/大小超限。"""
     code = "INVALID_ARGUMENT"
     http_status = 400
 
 
 class PermissionDenied(TcError):
+    """无业务权限(HTTP 403),如非本班教师访问班级数据。"""
     code = "PERMISSION_DENIED"
     http_status = 403
 
 
 class TeacherNotFound(TcError):
+    """教师不存在(HTTP 404)。"""
     code = "TEACHER_NOT_FOUND"
     http_status = 404
 
 
 class StudentNotFound(TcError):
+    """学生不存在(HTTP 404)。"""
     code = "STUDENT_NOT_FOUND"
     http_status = 404
 
 
 class ClassNotFound(TcError):
+    """班级不存在(HTTP 404)。"""
     code = "CLASS_NOT_FOUND"
     http_status = 404
 
 
 class HomeworkNotFound(TcError):
+    """作业不存在(HTTP 404)。"""
     code = "HOMEWORK_NOT_FOUND"
     http_status = 404
 
 
 class QuestionNotFound(TcError):
+    """题目不存在(HTTP 404)。"""
     code = "QUESTION_NOT_FOUND"
     http_status = 404
 
 
 class SubmissionNotFound(TcError):
+    """提交不存在(HTTP 404)。"""
     code = "SUBMISSION_NOT_FOUND"
     http_status = 404
 
@@ -71,11 +80,13 @@ class GradingInProgress(TcError):
 
 
 class ProfileRebuildFailed(TcError):
+    """画像重建失败(HTTP 500),如画像数据源不可用。"""
     code = "PROFILE_REBUILD_FAILED"
     http_status = 500
 
 
 class DataSourceError(TcError):
+    """外部/数据源错误(HTTP 500),如数据库或外部 API 异常。"""
     code = "DATA_SOURCE_ERROR"
     http_status = 500
 

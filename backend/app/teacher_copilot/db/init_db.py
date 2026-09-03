@@ -36,6 +36,7 @@ async def _run(seed: bool) -> None:
 
 
 def main() -> None:
+    """CLI 入口:初始化/建表(直接运行本文件时使用)。"""
     seed = "--seed" in sys.argv[1:]
     asyncio.run(_run(seed))
 

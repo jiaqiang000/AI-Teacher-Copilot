@@ -69,6 +69,7 @@ class AppConfig:
 
     @property
     def has_real_ocr(self) -> bool:
+        """OCR 密钥是否已配置(未配置时 OcrClient 走 mock)。"""
         return bool(self.ocr_api_key)
 
 
