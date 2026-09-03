@@ -23,7 +23,8 @@ const NAV_ITEMS = [
   { href: "/workspace/teacher-copilot/classes", label: "班级", icon: Users },
   // 作业入口按澄清:链到工作台(工作台含最近作业/分析入口),保持轻量
   { href: "/workspace/teacher-copilot/dashboard", label: "作业", icon: FileText },
-  { href: "/workspace/teacher-copilot/chat", label: "Copilot 对话", icon: MessageSquareText },
+  // 原生 DeerFlow agent 聊天页(完整流式工具/执行过程 UI,宪法 III 复用优先)
+  { href: "/workspace/agents/teacher-copilot/chats/new", label: "Copilot 对话", icon: MessageSquareText },
 ]
 
 export function TeacherNav() {
