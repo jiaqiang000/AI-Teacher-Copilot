@@ -17,6 +17,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
+import { RecentChatList } from "@/components/workspace/recent-chat-list"
 
 const NAV_ITEMS = [
   { href: "/workspace/teacher-copilot/dashboard", label: "教师工作台", icon: LayoutDashboard },
@@ -61,6 +62,14 @@ export function TeacherNav() {
           )
         })}
       </SidebarMenu>
+
+      {/* 003 复用 Deeflow:聊天记录(原生 RecentChatList,thread 自动保存于 deerflow.db) */}
+      {state !== "collapsed" && (
+        <div className="mt-4">
+          <div className="px-3 pb-1 text-xs font-medium text-muted-foreground">聊天记录</div>
+          <RecentChatList />
+        </div>
+      )}
     </div>
   )
 }
