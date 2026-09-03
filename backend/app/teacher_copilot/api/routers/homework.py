@@ -23,7 +23,8 @@ from app.teacher_copilot.services.question_service import QuestionService
 router = APIRouter(prefix="/api/teacher-copilot/homework")
 
 
-@router.post("/")
+@router.post("")      # 无尾斜杠(经 next rewrites 规范化后的实际路径)
+@router.post("/")     # 带尾斜杠(原路径,兼容)
 async def create_homework(
     body: dict,
     teacher_id: str = Depends(get_teacher_id),
