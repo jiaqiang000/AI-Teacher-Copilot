@@ -93,6 +93,8 @@ start_frontend() {
   cd "$FRONTEND"
   if [ "$REBUILD" -eq 1 ] || [ ! -d .next ]; then
     echo "  构建前端生产包(next build,约 1-2 分钟)..."
+    # 先清 .next:避免增量 manifest 残留导致原生路由 500(如 /workspace/chats)
+    rm -rf .next
     npm run build > "$LOG_DIR/frontend-build.log" 2>&1 || {
       echo "[ERROR] 前端构建失败,查看 logs/frontend-build.log" >&2; exit 1; }
   fi
