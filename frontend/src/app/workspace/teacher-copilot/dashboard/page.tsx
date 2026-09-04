@@ -1,6 +1,7 @@
 "use client"
 // 教师工作台(对照 Figma 01)- 客户端拉取(带登录态 cookie,经同源代理到 Gateway)
 import { useEffect, useState } from "react"
+
 import { getClassProfile, getHomeworkAnalysis } from "@/core/teacher-copilot/api"
 
 const CLASS_ID = "class_03"
@@ -12,15 +13,17 @@ export default function DashboardPage() {
   const [error, setError] = useState("")
 
   useEffect(() => {
-    Promise.all([
+    void Promise.all([
       getClassProfile(CLASS_ID, SUBJECT).catch((e) => { setError((e as Error).message); return null }),
       getHomeworkAnalysis("hw_004", CLASS_ID).catch((e) => { setError((e as Error).message); return null }),
-    ]).then(([p, a]) => { setProfile(p); setHwAnalysis(a) })
+    ])
+      .then(([p, a]) => { setProfile(p); setHwAnalysis(a) })
+      .catch((e) => { setError((e as Error).message) })
   }, [])
 
   const recentRate = profile?.overview?.avg_score_rate
   const attentionCount = profile?.attention_students?.length ?? 0
-  const weakPoints = profile?.weak_points?.map((w) => w.knowledge_point_key.split(".").pop()) || []
+  const weakPoints = profile?.weak_points?.map((w) => w.knowledge_point_key.split(".").pop()) ?? []
   const completionRate = hwAnalysis?.completion?.completion_rate ?? null
 
   return (
@@ -37,11 +40,11 @@ export default function DashboardPage() {
           <b>教师账号</b> teacher@demo.com / teacher123456 · <b>学生账号</b> student@demo.com / student123456
         </p>
         <p className="text-muted-foreground">
-          建议步骤:① 左侧"Teacher Copilot"→ 聊天页问"八三班《单元练习》完成率"→ ② 学生账号看作业与批改结果 →
+          建议步骤:① 左侧“Copilot 对话”→ 聊天页问“八三班《单元练习》完成率”→ ② 学生账号看作业与批改结果 →
           ③ 教师出题(手动/题库/题目图 OCR)并发布 → ④ 学生上传作答(需配置 OSS)→ 查看新批改结果。
         </p>
         <p className="text-muted-foreground">
-          角色切换:退出登录后使用另一账号重新登录(DeerFlow 登录页右上角退出)。
+          角色切换:退出登录后使用另一账号重新登录。
         </p>
       </details>
 

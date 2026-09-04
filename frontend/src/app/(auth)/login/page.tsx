@@ -2,12 +2,10 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
 import { RememberSessionOption } from "@/components/auth/remember-session-option";
 import { Button } from "@/components/ui/button";
-import { FlickeringGrid } from "@/components/ui/flickering-grid";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { resolveAuthNextPath } from "@/core/auth/next-path";
@@ -27,16 +25,12 @@ export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated } = useAuth();
-  const { theme, resolvedTheme } = useTheme();
   const { t } = useI18n();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [isLogin, setIsLogin] = useState(true);
-  const [ssoProviders, setSsoProviders] = useState<
-    { id: string; display_name: string; type: string }[]
-  >([]);
   const [setupStatus, setSetupStatus] = useState<SetupStatusResponse | null>(
     null,
   );
@@ -53,11 +47,6 @@ export default function LoginPage() {
           t.login.authFailed)
       : "",
   );
-  // Soft hint shown after a failed login when SSO is configured: an SSO-only
-  // account has no local password, so the backend returns a generic
-  // "incorrect email or password" (deliberately, to avoid account enumeration).
-  // Nudge the user toward the SSO buttons without confirming the account exists.
-  const [showSsoHint, setShowSsoHint] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Get next parameter for validated redirect
@@ -116,35 +105,9 @@ export default function LoginPage() {
     };
   }, [setupStatusAttempt]);
 
-  // SSO providers are static for the page lifetime and should not be coupled to
-  // setup-status retries.
-  useEffect(() => {
-    let cancelled = false;
-
-    void fetch("/api/v1/auth/providers")
-      .then((r) => r.json())
-      .then(
-        (data: {
-          providers: { id: string; display_name: string; type: string }[];
-        }) => {
-          if (!cancelled) {
-            setSsoProviders(data.providers ?? []);
-          }
-        },
-      )
-      .catch(() => {
-        // Ignore errors; no SSO providers shown
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setShowSsoHint(false);
     setLoading(true);
 
     if (!isLogin && !regularSignupAllowed) {
@@ -180,11 +143,6 @@ export default function LoginPage() {
         const data = await res.json();
         const authError = parseAuthError(data);
         setError(authError.message);
-        // On a failed login with SSO configured, surface a hint pointing at the
-        // SSO buttons — the "wrong password" may really mean "this is an SSO account".
-        if (isLogin && ssoProviders.length > 0) {
-          setShowSsoHint(true);
-        }
         return;
       }
 
@@ -198,8 +156,6 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
-
-  const actualTheme = theme === "system" ? resolvedTheme : theme;
 
   return (
     <div className="bg-background relative flex min-h-screen items-center justify-center overflow-x-hidden overflow-y-auto">

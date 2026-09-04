@@ -9,7 +9,7 @@ describe("core copy loading", () => {
       loadTranslations("zh-CN"),
     ]);
     expect(english.inputBox.disclaimer).toBe(
-      "DeerFlow is AI and can make mistakes",
+      "AI 生成内容仅供参考,重要结论请以人工复核为准。",
     );
     expect(chinese.inputBox.disclaimer).toBe(
       "内容由AI生成，重要信息请务必核查",

@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { Toaster } from "sonner";
 
 import { QueryClientProvider } from "@/components/query-client-provider";
+import { StudentShell } from "@/components/teacher-copilot/student-shell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { CommandPalette } from "@/components/workspace/command-palette";
 import { GatewayOfflineBanner } from "@/components/workspace/gateway-offline-banner";
@@ -9,7 +10,6 @@ import { ModelLoadErrorBanner } from "@/components/workspace/model-load-error-ba
 import { SettingsDialogHost } from "@/components/workspace/settings";
 import { WorkspaceSettingsDeepLink } from "@/components/workspace/workspace-settings-deep-link";
 import { WorkspaceSidebar } from "@/components/workspace/workspace-sidebar";
-import { StudentShell } from "@/components/teacher-copilot/student-shell";
 import { getServerSideRole } from "@/core/teacher-copilot/server-role";
 
 function parseSidebarOpenCookie(

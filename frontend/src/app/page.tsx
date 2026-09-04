@@ -1,6 +1,6 @@
 // 智能作业批改 · 根路径(003 US-A:未登录→欢迎页;已登录→统一入口按角色分流)
-import { redirect } from "next/navigation"
 import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 
 import WelcomePage from "./welcome/page"
 

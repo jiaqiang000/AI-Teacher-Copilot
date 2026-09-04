@@ -1,7 +1,7 @@
 "use client"
 // 工作区统一入口(003 US-C 角色分流):教师→教师工作台;学生→学生作业页;未映射→登录页。
-import { useEffect } from "react"
 import { redirect } from "next/navigation"
+import { useEffect } from "react"
 
 import { useTeacherRole } from "@/core/teacher-copilot/role"
 
