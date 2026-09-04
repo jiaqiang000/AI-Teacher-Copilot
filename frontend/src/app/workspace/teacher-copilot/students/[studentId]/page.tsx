@@ -1,22 +1,19 @@
+"use client"
 // 学生画像(对照 Figma 03:指标卡 + 知识点掌握 + 重复错误 + 最近批改记录)
+// 客户端组件:服务端调用会因无浏览器 cookie(CSRF)而失败,与 dashboard 同模式。
+import { useEffect, useState } from "react"
 import { getStudentProfile, getStudentHistory } from "@/core/teacher-copilot/api"
 
 const SUBJECT = process.env.NEXT_PUBLIC_TC_SUBJECT || "math"
 const STUDENT_ID = process.env.NEXT_PUBLIC_TC_STUDENT_ID || "stu_003"
 
-export default async function StudentProfilePage() {
-  let profile
-  try {
-    profile = await getStudentProfile(STUDENT_ID, SUBJECT)
-  } catch {
-    profile = null
-  }
-  let history: Array<Record<string, unknown>> = []
-  try {
-    history = await getStudentHistory(STUDENT_ID, SUBJECT)
-  } catch {
-    history = []
-  }
+export default function StudentProfilePage() {
+  const [profile, setProfile] = useState<Awaited<ReturnType<typeof getStudentProfile>> | null>(null)
+  const [history, setHistory] = useState<Array<Record<string, unknown>>>([])
+  useEffect(() => {
+    getStudentProfile(STUDENT_ID, SUBJECT).then(setProfile).catch(() => setProfile(null))
+    getStudentHistory(STUDENT_ID, SUBJECT).then(setHistory).catch(() => setHistory([]))
+  }, [])
   const overview = profile?.overview
   const weak = profile?.weak_points ?? []
   const recurring = profile?.recurring_errors ?? []

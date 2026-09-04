@@ -1,16 +1,17 @@
+"use client"
 // 班级详情(对照 Figma 02:画像概览 + 长期薄弱/共性错误 + 重点关注学生)
+// 客户端组件:服务端调用会因无浏览器 cookie(CSRF)而失败,与 dashboard 同模式。
+import { useEffect, useState } from "react"
 import { getClassProfile } from "@/core/teacher-copilot/api"
 
 const CLASS_ID = process.env.NEXT_PUBLIC_TC_CLASS_ID || "class_03"
 const SUBJECT = process.env.NEXT_PUBLIC_TC_SUBJECT || "math"
 
-export default async function ClassDetailPage() {
-  let profile
-  try {
-    profile = await getClassProfile(CLASS_ID, SUBJECT)
-  } catch {
-    profile = null
-  }
+export default function ClassDetailPage() {
+  const [profile, setProfile] = useState<Awaited<ReturnType<typeof getClassProfile>> | null>(null)
+  useEffect(() => {
+    getClassProfile(CLASS_ID, SUBJECT).then(setProfile).catch(() => setProfile(null))
+  }, [])
   const weak = profile?.weak_points ?? []
   const errors = profile?.common_errors ?? []
   const attention = profile?.attention_students ?? []

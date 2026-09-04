@@ -1,16 +1,17 @@
+"use client"
 // 作业分析(对照 Figma 05:统计卡 + 成绩分布/低表现知识点 + 题目表现下钻)
+// 客户端组件:服务端调用会因无浏览器 cookie(CSRF)而失败,与 dashboard 同模式。
+import { useEffect, useState } from "react"
 import { getHomeworkAnalysis } from "@/core/teacher-copilot/api"
 
 const CLASS_ID = process.env.NEXT_PUBLIC_TC_CLASS_ID || "class_03"
 const HW_ID = process.env.NEXT_PUBLIC_TC_HW_ID || "hw_004"
 
-export default async function AnalysisPage() {
-  let data
-  try {
-    data = await getHomeworkAnalysis(HW_ID, CLASS_ID)
-  } catch {
-    data = null
-  }
+export default function AnalysisPage() {
+  const [data, setData] = useState<Awaited<ReturnType<typeof getHomeworkAnalysis>> | null>(null)
+  useEffect(() => {
+    getHomeworkAnalysis(HW_ID, CLASS_ID).then(setData).catch(() => setData(null))
+  }, [])
   const completion = data?.completion
   const perf = data?.performance
   const dist = perf?.score_distribution
