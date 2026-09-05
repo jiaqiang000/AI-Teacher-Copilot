@@ -1,7 +1,9 @@
 "use client";
 // 教师工作台(对照 Figma 01):摘要卡片和入口均来自当前教师的真实对象。
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { WorkspaceHeader } from "@/components/workspace/workspace-container";
 import {
@@ -20,6 +22,8 @@ const TREND_LABEL: Record<string, string> = {
 };
 
 export default function DashboardPage() {
+  const searchParams = useSearchParams();
+  const deniedToastShown = useRef(false);
   const [classes, setClasses] = useState<
     Awaited<ReturnType<typeof getTeacherClasses>>
   >([]);
@@ -34,6 +38,19 @@ export default function DashboardPage() {
   > | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (
+      searchParams.get("denied") === "student" &&
+      !deniedToastShown.current
+    ) {
+      deniedToastShown.current = true;
+      toast.warning("无权限", {
+        description: "这是学生功能页面,请使用学生账号访问。",
+        duration: 2000,
+      });
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     void Promise.all([

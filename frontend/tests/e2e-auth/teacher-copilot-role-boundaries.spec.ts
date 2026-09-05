@@ -27,3 +27,23 @@ test("学生会话访问所有教师页面都回到学生作业页并提示无�
     await expect(page.getByText("无权限")).toBeVisible({ timeout: 5_000 });
   }
 });
+
+test("教师会话访问学生作业页和批改页都回到教师工作台并提示无权限", async ({
+  page,
+}) => {
+  await page.goto("/login");
+  await page.getByRole("button", { name: "教师演示", exact: true }).click();
+  await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
+
+  for (const route of [
+    "/workspace/teacher-copilot/student/homework",
+    "/workspace/teacher-copilot/student/grading?homework_id=hw_004&question_id=q001",
+  ]) {
+    await page.goto(route);
+    await expect(page).toHaveURL(
+      /\/workspace\/teacher-copilot\/dashboard\?denied=student$/,
+      { timeout: 15_000 },
+    );
+    await expect(page.getByText("无权限")).toBeVisible({ timeout: 5_000 });
+  }
+});

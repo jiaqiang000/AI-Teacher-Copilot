@@ -11,3 +11,11 @@ export async function requireTeacherPage() {
     redirect("/workspace/teacher-copilot/student/homework?denied=1")
   }
 }
+
+export async function requireStudentPage() {
+  const role = await getServerSideRole()
+  if (role === "teacher") {
+    // denied=student:教师首页据此弹出学生页越权提示(2 秒自动消失)。
+    redirect("/workspace/teacher-copilot/dashboard?denied=student")
+  }
+}
