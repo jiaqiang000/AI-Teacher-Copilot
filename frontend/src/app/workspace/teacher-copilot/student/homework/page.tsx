@@ -40,6 +40,7 @@ export default function StudentHomeworkPage() {
   }, [])
 
   const questions = data?.questions ?? []
+  const homeworkId = data?.homework.homework_id ?? HW_ID
   const submitted = questions.filter((q) => q.my_submission).length
   const total = questions.length
   const deadline = data?.homework.deadline ? new Date(data.homework.deadline) : null
@@ -75,7 +76,7 @@ export default function StudentHomeworkPage() {
           const status = q.my_submission?.status
           // 空状态或未知状态统一回退，确保后续始终读取标签对象。
           const meta = STATUS_META[status ?? ""] ?? { label: "待提交", cls: "bg-gray-50 text-gray-500" }
-          const href = `/workspace/teacher-copilot/student/grading?homework_id=${HW_ID}&question_id=${q.question_id}`
+          const href = `/workspace/teacher-copilot/student/grading?homework_id=${homeworkId}&question_id=${q.question_id}`
           return (
             <div key={q.question_id} className="rounded-lg border p-4 flex justify-between items-center">
               <div>
