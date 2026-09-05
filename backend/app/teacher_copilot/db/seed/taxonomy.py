@@ -19,10 +19,16 @@ MATH_KP: list[tuple[str, str, str | None, int, bool]] = [
     ("math.linear_equation", "一元一次方程", None, 1, False),
     ("math.linear_equation.transposition", "移项", "math.linear_equation", 2, False),
     ("math.linear_equation.combine_like_terms", "合并同类项", "math.linear_equation", 2, False),
+    ("math.linear_equation.application", "一元一次方程应用", "math.linear_equation", 2, False),
+    ("math.linear_equation.arithmetic", "一元一次方程计算", "math.linear_equation", 2, False),
     ("math.linear_equation.other", "一元一次方程其他", "math.linear_equation", 2, True),
     ("math.function", "函数", None, 1, False),
     ("math.function.graph", "函数图像", "math.function", 2, False),
+    ("math.function.coordinate", "函数图像坐标", "math.function", 2, False),
     ("math.function.other", "函数其他", "math.function", 2, True),
+    ("math.application", "实际应用", None, 1, False),
+    ("math.application.word_problem", "实际应用题", "math.application", 2, False),
+    ("math.application.other", "其他实际应用", "math.application", 2, True),
 ]
 
 # 数学错误类型两级分类:(code, name, parent_code, level, is_other)
