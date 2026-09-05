@@ -1,62 +1,201 @@
 "use client"
-// 作业分析(对照 Figma 05:统计卡 + 成绩分布/低表现知识点 + 题目表现下钻)
-// 客户端组件:服务端调用会因无浏览器 cookie(CSRF)而失败,与 dashboard 同模式。
+// 作业分析(对照 Figma 05):按 homeworkId 展示分析,题目行可进入同一作业的下钻视图。
+import Link from "next/link"
+import { useParams, useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
-import { getHomeworkAnalysis } from "@/core/teacher-copilot/api"
 
-const CLASS_ID = process.env.NEXT_PUBLIC_TC_CLASS_ID || "class_03"
-const HW_ID = process.env.NEXT_PUBLIC_TC_HW_ID || "hw_004"
+import { WorkspaceHeader } from "@/components/workspace/workspace-container"
+import {
+  getHomework,
+  getHomeworkAnalysis,
+  getQuestionAnalysis,
+} from "@/core/teacher-copilot/api"
+
+type Homework = Awaited<ReturnType<typeof getHomework>>
+type Analysis = Awaited<ReturnType<typeof getHomeworkAnalysis>>
+type QuestionDetail = Awaited<ReturnType<typeof getQuestionAnalysis>>
 
 export default function AnalysisPage() {
-  const [data, setData] = useState<Awaited<ReturnType<typeof getHomeworkAnalysis>> | null>(null)
+  const { homeworkId } = useParams<{ homeworkId: string }>()
+  const searchParams = useSearchParams()
+  const requestedClassId = searchParams.get("class_id") ?? ""
+  const questionId = searchParams.get("question_id") ?? ""
+  const [homework, setHomework] = useState<Homework | null>(null)
+  const [data, setData] = useState<Analysis | null>(null)
+  const [questionDetail, setQuestionDetail] = useState<QuestionDetail | null>(null)
+  const [resolvedClassId, setResolvedClassId] = useState(requestedClassId)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [questionError, setQuestionError] = useState("")
+
   useEffect(() => {
-    getHomeworkAnalysis(HW_ID, CLASS_ID).then(setData).catch(() => setData(null))
-  }, [])
-  const completion = data?.completion
-  const perf = data?.performance
-  const dist = perf?.score_distribution
-  const kps = data?.knowledge_points ?? []
+    let active = true
+    setLoading(true)
+    setError("")
+    setHomework(null)
+    setData(null)
+    void (async () => {
+      try {
+        const nextHomework = await getHomework(homeworkId)
+        const classId = requestedClassId || nextHomework.class_id
+        const nextAnalysis = await getHomeworkAnalysis(homeworkId, classId)
+        if (!active) return
+        setHomework(nextHomework)
+        setResolvedClassId(classId)
+        setData(nextAnalysis)
+      } catch (e) {
+        if (active) setError((e as Error).message)
+      } finally {
+        if (active) setLoading(false)
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [homeworkId, requestedClassId])
+
+  useEffect(() => {
+    if (!questionId) {
+      setQuestionDetail(null)
+      setQuestionError("")
+      return
+    }
+    const selected = data?.questions.find((question) => question.question_id === questionId)
+    if (!selected || !resolvedClassId) {
+      setQuestionDetail(null)
+      setQuestionError("题目不存在或与当前作业不匹配")
+      return
+    }
+    let active = true
+    setQuestionDetail(null)
+    setQuestionError("")
+    void getQuestionAnalysis(questionId, homeworkId, resolvedClassId)
+      .then((detail) => {
+        if (active) setQuestionDetail(detail)
+      })
+      .catch((e) => {
+        if (active) setQuestionError((e as Error).message)
+      })
+    return () => {
+      active = false
+    }
+  }, [data, homeworkId, questionId, resolvedClassId])
+
   const questions = data?.questions ?? []
-  const attention = data?.attention_students ?? []
+  const selectedQuestion = questions.find((question) => question.question_id === questionId)
+  const backHref = `/workspace/teacher-copilot/homeworks/${homeworkId}/analysis?class_id=${resolvedClassId}`
+  const highestErrorQuestion = [...questions]
+    .filter((question) => question.error_rate != null)
+    .sort((left, right) => (right.error_rate ?? -1) - (left.error_rate ?? -1))[0]
 
   return (
-    <div className="p-8 space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold">{HW_ID} · 作业分析</h1>
-        <p className="text-muted-foreground text-sm">八三班 · 本周数学周末作业</p>
-      </header>
+    <div className="min-h-full w-full">
+      <WorkspaceHeader />
+      <main className="space-y-6 p-4 sm:p-8">
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">
+              {questionId
+                ? `第 ${questionDetail?.question_no ?? selectedQuestion?.question_no ?? "-"} 题 · 题目详情`
+                : `${homework?.name ?? homeworkId} · 作业分析`}
+            </h1>
+            <p className="text-muted-foreground text-sm">
+              {homework?.class_id ?? resolvedClassId} · {homework?.subject ?? "math"}
+            </p>
+          </div>
+          <Link href="/workspace/teacher-copilot/homeworks" className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50">
+            返回作业管理
+          </Link>
+        </header>
 
-      <div className="grid grid-cols-4 gap-4">
-        <Stat label="完成率" value={completion?.completion_rate != null ? `${Math.round(completion.completion_rate * 100)}%` : "—"} sub={`${completion?.submitted_student_count ?? 0}/${completion?.assigned_student_count ?? 0}`} />
-        <Stat label="完整批改" value={String(perf?.graded_student_count ?? 0)} sub="学生" />
-        <Stat label="平均得分率" value={perf?.avg_score_rate != null ? `${Math.round(perf.avg_score_rate * 100)}%` : "—"} sub="fully graded" />
-        <Stat label="最高错题" value={questions[0]?.question_no ? `第${questions[0].question_no}题` : "—"} sub={questions[0]?.error_rate != null ? `错误率 ${Math.round(questions[0].error_rate * 100)}%` : ""} />
+        {loading && <p className="text-muted-foreground text-sm">正在加载作业分析...</p>}
+        {!loading && error && (
+          <section className="rounded-lg border border-red-200 p-4 text-sm text-red-600">
+            加载失败: {error}
+          </section>
+        )}
+        {!loading && !error && data && (
+          questionId ? (
+            <QuestionDetailView
+              detail={questionDetail}
+              selectedQuestion={selectedQuestion}
+              error={questionError}
+              backHref={backHref}
+            />
+          ) : (
+            <AnalysisOverview
+              data={data}
+              highestErrorQuestion={highestErrorQuestion}
+              homeworkId={homeworkId}
+              classId={resolvedClassId}
+            />
+          )
+        )}
+      </main>
+    </div>
+  )
+}
+
+function AnalysisOverview({
+  data,
+  highestErrorQuestion,
+  homeworkId,
+  classId,
+}: {
+  data: Analysis
+  highestErrorQuestion: Analysis["questions"][number] | undefined
+  homeworkId: string
+  classId: string
+}) {
+  const completion = data.completion
+  const perf = data.performance
+  const dist = perf.score_distribution
+
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat
+          label="完成率"
+          value={completion.completion_rate != null ? `${Math.round(completion.completion_rate * 100)}%` : "—"}
+          sub={`${completion.submitted_student_count}/${completion.assigned_student_count}`}
+        />
+        <Stat label="完整批改" value={String(perf.graded_student_count)} sub="学生" />
+        <Stat
+          label="平均得分率"
+          value={perf.avg_score_rate != null ? `${Math.round(perf.avg_score_rate * 100)}%` : "—"}
+          sub="有效批改结果"
+        />
+        <Stat
+          label="最高错题"
+          value={highestErrorQuestion ? `第 ${highestErrorQuestion.question_no} 题` : "—"}
+          sub={highestErrorQuestion?.error_rate != null ? `错误率 ${Math.round(highestErrorQuestion.error_rate * 100)}%` : "暂无数据"}
+        />
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid gap-6 lg:grid-cols-2">
         <section>
-          <h2 className="text-lg font-semibold mb-2">成绩分布</h2>
-          <p className="text-xs text-muted-foreground mb-2">按 fully graded students</p>
+          <h2 className="mb-2 text-lg font-semibold">成绩分布</h2>
+          <p className="text-muted-foreground mb-2 text-xs">按完整批改学生统计</p>
           {dist ? (
-            <ul className="text-sm space-y-1">
+            <ul className="space-y-1 text-sm">
               <li>&lt;60&nbsp;&nbsp;{dist.below_60} 人</li>
               <li>60-79&nbsp;&nbsp;{dist.from_60_to_79} 人</li>
               <li>80-89&nbsp;&nbsp;{dist.from_80_to_89} 人</li>
               <li>90-100&nbsp;&nbsp;{dist.from_90_to_100} 人</li>
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">暂无数据</p>
+            <p className="text-muted-foreground text-sm">暂无数据</p>
           )}
         </section>
         <section>
-          <h2 className="text-lg font-semibold mb-2">本次低表现知识点</h2>
-          <p className="text-xs text-muted-foreground mb-2">即时 Analysis ≠ 长期 weak point</p>
-          {kps.length === 0 ? (
-            <p className="text-sm text-muted-foreground">无</p>
+          <h2 className="mb-2 text-lg font-semibold">本次低表现知识点</h2>
+          <p className="text-muted-foreground mb-2 text-xs">即时分析,不等同于长期薄弱点</p>
+          {data.knowledge_points.length === 0 ? (
+            <p className="text-muted-foreground text-sm">无</p>
           ) : (
-            kps.slice(0, 3).map((kp) => (
-              <div key={kp.knowledge_point_key} className="rounded border px-3 py-2 mb-2 text-sm">
-                {kp.knowledge_point_key.split(".").pop()} · avg {kp.avg_performance != null ? Math.round(kp.avg_performance * 100) : "—"}%
+            data.knowledge_points.slice(0, 3).map((knowledgePoint) => (
+              <div key={knowledgePoint.knowledge_point_key} className="mb-2 rounded border px-3 py-2 text-sm">
+                {knowledgePoint.knowledge_point_key.split(".").pop()} · avg {knowledgePoint.avg_performance != null ? Math.round(knowledgePoint.avg_performance * 100) : "—"}%
               </div>
             ))
           )}
@@ -64,25 +203,103 @@ export default function AnalysisPage() {
       </div>
 
       <section>
-        <h2 className="text-lg font-semibold mb-2">题目表现</h2>
-        <p className="text-xs text-muted-foreground mb-2">点击可下钻 Question Analysis</p>
-        {questions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无</p>
+        <h2 className="mb-2 text-lg font-semibold">题目表现</h2>
+        <p className="text-muted-foreground mb-2 text-xs">点击有有效作答的题目进入 Question Analysis</p>
+        {data.questions.length === 0 ? (
+          <p className="text-muted-foreground text-sm">暂无题目</p>
         ) : (
           <ul className="space-y-1 text-sm">
-            {questions.map((q) => (
-              <li key={q.question_id} className="rounded border px-3 py-2 flex justify-between">
-                <span>第{q.question_no}题</span>
-                <span className="text-muted-foreground">
-                  错误率 {q.error_rate != null ? `${Math.round(q.error_rate * 100)}%` : "—"}
-                  {q.common_errors[0] ? ` · ${q.common_errors[0].error_code}` : ""}
-                </span>
+            {data.questions.map((question) => {
+              const content = (
+                <>
+                  <span>第 {question.question_no} 题</span>
+                  <span className="text-muted-foreground">
+                    {question.attempt_count > 0
+                      ? `错误率 ${question.error_rate != null ? `${Math.round(question.error_rate * 100)}%` : "—"}${question.common_errors[0] ? ` · ${question.common_errors[0].error_code}` : ""}`
+                      : "暂无有效作答"}
+                  </span>
+                </>
+              )
+              return question.attempt_count > 0 ? (
+                <li key={question.question_id}>
+                  <Link
+                    href={`/workspace/teacher-copilot/homeworks/${homeworkId}/analysis?class_id=${classId}&question_id=${question.question_id}`}
+                    className="flex items-center justify-between gap-3 rounded border px-3 py-2 hover:bg-gray-50"
+                  >
+                    {content}
+                  </Link>
+                </li>
+              ) : (
+                <li key={question.question_id} className="flex items-center justify-between gap-3 rounded border px-3 py-2">
+                  {content}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+    </>
+  )
+}
+
+function QuestionDetailView({
+  detail,
+  selectedQuestion,
+  error,
+  backHref,
+}: {
+  detail: QuestionDetail | null
+  selectedQuestion: Analysis["questions"][number] | undefined
+  error: string
+  backHref: string
+}) {
+  if (error) {
+    return (
+      <section className="rounded-lg border border-red-200 p-4 text-sm text-red-600">
+        <p>{error}</p>
+        <Link className="mt-3 inline-block underline-offset-2 hover:underline" href={backHref}>
+          返回作业分析
+        </Link>
+      </section>
+    )
+  }
+  if (!detail) {
+    return <p className="text-muted-foreground text-sm">正在加载题目分析...</p>
+  }
+
+  return (
+    <section className="space-y-4">
+      <Link href={backHref} className="inline-block text-sm underline-offset-2 hover:underline">
+        ← 返回作业分析
+      </Link>
+      <div className="rounded-lg border p-4">
+        <h2 className="mb-2 font-semibold">题干</h2>
+        <p className="whitespace-pre-wrap text-sm">{detail.content}</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat label="作答人数" value={String(detail.attempt_count)} sub="有效提交" />
+        <Stat label="平均得分率" value={detail.avg_score_rate != null ? `${Math.round(detail.avg_score_rate * 100)}%` : "—"} sub="本题" />
+        <Stat label="错误人数" value={String(detail.error_student_count)} sub="有诊断错误" />
+        <Stat label="错误率" value={detail.error_rate != null ? `${Math.round(detail.error_rate * 100)}%` : "—"} sub="本题" />
+      </div>
+      <div className="rounded-lg border p-4">
+        <h2 className="mb-2 font-semibold">共性错误</h2>
+        {detail.common_errors.length === 0 ? (
+          <p className="text-muted-foreground text-sm">暂无共性错误</p>
+        ) : (
+          <ul className="space-y-2 text-sm">
+            {detail.common_errors.map((item) => (
+              <li key={`${item.error_code}-${item.knowledge_point_key}`} className="rounded border px-3 py-2">
+                {item.error_code} · {item.affected_student_count} 人 · {item.knowledge_point_key.split(".").pop()}
               </li>
             ))}
           </ul>
         )}
-      </section>
-    </div>
+      </div>
+      {selectedQuestion && detail.question_no !== selectedQuestion.question_no && (
+        <p className="text-sm text-red-600">题目编号与入口不一致,请返回后重试。</p>
+      )}
+    </section>
   )
 }
 
@@ -90,8 +307,8 @@ function Stat({ label, value, sub }: { label: string; value: string; sub: string
   return (
     <div className="rounded-lg border p-4">
       <div className="text-muted-foreground text-sm">{label}</div>
-      <div className="text-2xl font-bold my-1">{value}</div>
-      <div className="text-xs text-muted-foreground">{sub}</div>
+      <div className="my-1 text-2xl font-bold">{value}</div>
+      <div className="text-muted-foreground text-xs">{sub}</div>
     </div>
   )
 }

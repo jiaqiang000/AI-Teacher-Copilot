@@ -10,8 +10,10 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 from sqlalchemy import func, select
 
+from app.teacher_copilot.api.routers.profile import question_analysis
 from app.teacher_copilot.db import models  # noqa: F401  # 确保所有业务表注册
 from app.teacher_copilot.db.engine import (
     create_all,
@@ -226,6 +228,48 @@ async def test_submission_rejects_question_homework_mismatch_without_resetting(s
     assert created is True
     assert unchanged.image_url == "https://example.com/valid.png"
     assert unchanged.status == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_question_analysis_rejects_cross_class_scope_and_empty_data(seeded_database):
+    """题目分析必须绑定题目、作业、班级和教师,空作答不能伪造统计。"""
+    with pytest.raises(HTTPException) as cross_class:
+        await question_analysis(
+            question_id="q001",
+            homework_id="hw_004",
+            class_id="class_04",
+            teacher_id="teacher_01",
+        )
+
+    async with HomeworkService() as service:
+        await service.create_homework(
+            homework_id="hw_test_analysis_empty",
+            name="无有效作答分析作业",
+            class_id="class_03",
+            teacher_id="teacher_01",
+            subject="math",
+        )
+    async with QuestionService() as service:
+        await service.create_question(
+            question_id="q_test_analysis_empty",
+            homework_id="hw_test_analysis_empty",
+            subject="math",
+            question_type="calculation",
+            content="计算 3 + 3",
+            max_score=10,
+            difficulty="easy",
+        )
+
+    with pytest.raises(HTTPException) as empty_data:
+        await question_analysis(
+            question_id="q_test_analysis_empty",
+            homework_id="hw_test_analysis_empty",
+            class_id="class_03",
+            teacher_id="teacher_01",
+        )
+
+    assert cross_class.value.status_code == 400
+    assert empty_data.value.status_code == 404
 
 
 @pytest.mark.asyncio

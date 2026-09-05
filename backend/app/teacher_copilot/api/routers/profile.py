@@ -14,7 +14,7 @@ from app.teacher_copilot.api.identity import get_teacher_id
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.grading import GradingResult
 from app.teacher_copilot.db.models.org import ClassRoom, ClassStudent, Student
-from app.teacher_copilot.errors import StudentNotFound, TcError
+from app.teacher_copilot.errors import InvalidArgument, StudentNotFound, TcError
 from app.teacher_copilot.services.analysis_service import AnalysisCalculationV1
 from app.teacher_copilot.services.permission_service import TeacherPermissionService
 from app.teacher_copilot.services.profile_service import ProfileAlgorithmV1
@@ -177,14 +177,32 @@ async def question_analysis(
     """单题下钻分析(QuestionAnalysis,即时聚合)。"""
     try:
         async with TeacherPermissionService() as perm:
-            await perm.ensure_question_owned(teacher_id, question_id)
+            question = await perm.ensure_question_owned(teacher_id, question_id)
+            homework = await perm.ensure_homework_owned(teacher_id, homework_id)
+            await perm.ensure_class_owned(teacher_id, class_id)
+        if question.homework_id != homework_id:
+            raise InvalidArgument(
+                f"题目 {question_id} 不属于作业 {homework_id}",
+                code="QUESTION_HOMEWORK_MISMATCH",
+            )
+        if homework.class_id != class_id:
+            raise InvalidArgument(
+                f"作业 {homework_id} 不属于班级 {class_id}",
+                code="HOMEWORK_CLASS_MISMATCH",
+            )
         async with AnalysisCalculationV1() as algo:
             # 复用作业分析,过滤该题
             full = await algo.compute_homework_analysis(homework_id, class_id)
         # 找到该题的 QuestionStat
         qs = next((q for q in full["questions"] if q["question_id"] == question_id), None)
-        if qs is None:
+        if qs is None or qs["attempt_count"] == 0:
             raise HTTPException(404, detail=dict(code="QUESTION_NOT_FOUND", message="题目无有效作答数据"))
-        return {"success": True, "data": qs}
+        return {"success": True, "data": {
+            **qs,
+            "content": question.content,
+            "question_type": question.question_type,
+            "difficulty": question.difficulty,
+            "max_score": question.max_score,
+        }}
     except TcError as e:
         raise HTTPException(e.http_status, detail=dict(code=e.code, message=e.message))

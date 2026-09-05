@@ -1,6 +1,20 @@
 import { expect, test, type Page } from "@playwright/test";
 
 async function mockTeacherApis(page: Page) {
+  await page.route("**/api/v1/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        id: "e2e-teacher",
+        email: "teacher@demo.com",
+        system_role: "admin",
+        needs_setup: false,
+        oauth_provider: null,
+      },
+    }),
+  );
+  await page.route("**/api/teacher-copilot/account/role", (route) =>
+    route.fulfill({ json: { success: true, data: { role: "teacher" } } }),
+  );
   await page.route("**/api/teacher-copilot/classes", (route) =>
     route.fulfill({
       json: {
@@ -112,6 +126,30 @@ async function mockTeacherApis(page: Page) {
       },
     }),
   );
+  await page.route("**/api/teacher-copilot/analysis/homework**", (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          homework_id: "hw_004",
+          class_id: "class_03",
+          completion: {
+            assigned_student_count: 30,
+            submitted_student_count: 28,
+            completion_rate: 0.9333,
+          },
+          performance: {
+            graded_student_count: 27,
+            avg_score_rate: 0.82,
+            score_distribution: null,
+          },
+          knowledge_points: [],
+          questions: [],
+          attention_students: [],
+        },
+      },
+    }),
+  );
 }
 
 test.describe("教师巡检缺口：对象与入口", () => {
@@ -156,6 +194,21 @@ test.describe("教师巡检缺口：对象与入口", () => {
     await page.goto("/workspace/teacher-copilot/classes/not-found");
     await expect(page.getByText(/班级不存在|加载失败/)).toBeVisible();
     await expect(page.getByText("八三班 · 数学")).toHaveCount(0);
+  });
+
+  test("375×812 窄屏展开后可见四项教师导航且没有横向滚动", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/workspace/teacher-copilot/dashboard");
+    await page.locator('[data-slot="sidebar-trigger"]').click();
+    await expect(page.getByRole("link", { name: "教师工作台" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "班级" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "作业", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Copilot 对话" }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBe(375);
   });
 });
 
@@ -244,5 +297,165 @@ test.describe("学生巡检缺口：题目对象一致性", () => {
     await expect(page.locator('input[type="file"]')).toHaveCount(0);
     expect(submissionRequests).toBe(0);
     await expect(page.getByText("解方程 2x + 4 = 8")).toHaveCount(0);
+  });
+});
+
+test.describe("教师巡检缺口：作业题目下钻", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockTeacherApis(page);
+    await page.route("**/api/teacher-copilot/homework/hw_004", (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: {
+            homework_id: "hw_004",
+            name: "八年级数学周末作业",
+            class_id: "class_03",
+            subject: "math",
+            status: "PUBLISHED",
+            published_at: "2026-09-05T10:00:00",
+            deadline: null,
+            questions: [
+              {
+                question_id: "q001",
+                question_no: 1,
+                question_type: "calculation",
+                difficulty: "easy",
+                content: "解方程 2x + 4 = 8",
+                max_score: 10,
+              },
+              {
+                question_id: "q002",
+                question_no: 2,
+                question_type: "solution",
+                difficulty: "medium",
+                content: "解含括号的一元一次方程",
+                max_score: 10,
+              },
+            ],
+          },
+        },
+      }),
+    );
+    await page.route(
+      "**/api/teacher-copilot/analysis/homework/hw_004**",
+      (route) =>
+        route.fulfill({
+          json: {
+            success: true,
+            data: {
+              homework_id: "hw_004",
+              class_id: "class_03",
+              completion: {
+                assigned_student_count: 30,
+                submitted_student_count: 28,
+                completion_rate: 0.9333,
+              },
+              performance: {
+                graded_student_count: 27,
+                avg_score_rate: 0.82,
+                score_distribution: {
+                  below_60: 3,
+                  from_60_to_79: 8,
+                  from_80_to_89: 10,
+                  from_90_to_100: 6,
+                },
+              },
+              knowledge_points: [],
+              questions: [
+                {
+                  question_id: "q001",
+                  question_no: 1,
+                  attempt_count: 28,
+                  avg_score_rate: 0.72,
+                  error_student_count: 8,
+                  error_rate: 0.2857,
+                  common_errors: [
+                    {
+                      error_code: "SIGN_ERROR",
+                      knowledge_point_key: "math.linear_equation.transposition",
+                      occurrence_count: 8,
+                      affected_student_count: 8,
+                    },
+                  ],
+                },
+                {
+                  question_id: "q002",
+                  question_no: 2,
+                  attempt_count: 28,
+                  avg_score_rate: 0.88,
+                  error_student_count: 4,
+                  error_rate: 0.1429,
+                  common_errors: [],
+                },
+              ],
+              attention_students: [],
+            },
+          },
+        }),
+    );
+    await page.route(
+      "**/api/teacher-copilot/analysis/question/q001**",
+      (route) =>
+        route.fulfill({
+          json: {
+            success: true,
+            data: {
+              question_id: "q001",
+              question_no: 1,
+              attempt_count: 28,
+              avg_score_rate: 0.72,
+              error_student_count: 8,
+              error_rate: 0.2857,
+              common_errors: [
+                {
+                  error_code: "SIGN_ERROR",
+                  knowledge_point_key: "math.linear_equation.transposition",
+                  occurrence_count: 8,
+                  affected_student_count: 8,
+                },
+              ],
+              content: "解方程 2x + 4 = 8",
+              question_type: "calculation",
+              difficulty: "easy",
+              max_score: 10,
+            },
+          },
+        }),
+    );
+  });
+
+  test("题目表现行可点击并返回同一份作业分析", async ({ page }) => {
+    await page.goto(
+      "/workspace/teacher-copilot/homeworks/hw_004/analysis?class_id=class_03",
+    );
+    await expect(page.getByRole("link", { name: /第 1 题/ })).toHaveAttribute(
+      "href",
+      "/workspace/teacher-copilot/homeworks/hw_004/analysis?class_id=class_03&question_id=q001",
+    );
+    await page.getByRole("link", { name: /第 1 题/ }).click();
+    await expect(page.getByRole("heading", { name: /第 1 题/ })).toBeVisible();
+    await expect(page.getByText("解方程 2x + 4 = 8")).toBeVisible();
+    await expect(page.locator("body")).toContainText("错误率29%");
+    await page.getByRole("link", { name: /返回作业分析/ }).click();
+    await expect(page).not.toHaveURL(/question_id/);
+  });
+
+  test("题目无有效数据时显示明确空状态和返回路径", async ({ page }) => {
+    await page.route(
+      "**/api/teacher-copilot/analysis/question/q002**",
+      (route) =>
+        route.fulfill({
+          status: 404,
+          json: { detail: { message: "题目无有效作答数据" } },
+        }),
+    );
+    await page.goto(
+      "/workspace/teacher-copilot/homeworks/hw_004/analysis?class_id=class_03&question_id=q002",
+    );
+    await expect(page.getByText("题目无有效作答数据")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /返回作业分析/ }),
+    ).toBeVisible();
   });
 });

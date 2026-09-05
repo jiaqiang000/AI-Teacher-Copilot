@@ -152,7 +152,14 @@ export async function getQuestionAnalysis(
   homeworkId: string,
   classId: string,
 ) {
-  return request<object>(
+  return request<
+    HomeworkAnalysis["questions"][number] & {
+      content: string
+      question_type: string
+      difficulty: string | null
+      max_score: number
+    }
+  >(
     `/analysis/question/${questionId}?homework_id=${homeworkId}&class_id=${classId}`,
   )
 }
