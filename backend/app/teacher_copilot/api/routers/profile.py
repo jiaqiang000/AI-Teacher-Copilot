@@ -10,6 +10,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 
+from app.teacher_copilot.api.display_labels import (
+    annotate_homework_analysis,
+    annotate_profile,
+)
 from app.teacher_copilot.api.identity import get_teacher_id
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.grading import GradingResult
@@ -72,6 +76,7 @@ async def student_profile(
             "class_id": class_room.class_id,
             "class_name": class_room.name,
         })
+        await annotate_profile(profile, context=f"profile/student/{student_id}")
         return {"success": True, "data": profile}
     except TcError as e:
         raise HTTPException(e.http_status, detail=dict(code=e.code, message=e.message))
@@ -89,6 +94,7 @@ async def class_profile(
         async with ProfileAlgorithmV1() as algo:
             profile = await algo.compute_class(class_id, subject)
         profile["basic"]["class_name"] = class_room.name
+        await annotate_profile(profile, context=f"profile/class/{class_id}")
         return {"success": True, "data": profile}
     except TcError as e:
         raise HTTPException(e.http_status, detail=dict(code=e.code, message=e.message))
@@ -164,6 +170,9 @@ async def homework_analysis(
             await perm.ensure_homework_owned(teacher_id, homework_id)
         async with AnalysisCalculationV1() as algo:
             analysis = await algo.compute_homework_analysis(homework_id, class_id)
+        await annotate_homework_analysis(
+            analysis, context=f"analysis/homework/{homework_id}"
+        )
         return {"success": True, "data": analysis}
     except TcError as e:
         raise HTTPException(e.http_status, detail=dict(code=e.code, message=e.message))
@@ -193,6 +202,9 @@ async def question_analysis(
         async with AnalysisCalculationV1() as algo:
             # 复用作业分析,过滤该题
             full = await algo.compute_homework_analysis(homework_id, class_id)
+        await annotate_homework_analysis(
+            full, context=f"analysis/question/{question_id}"
+        )
         # 找到该题的 QuestionStat
         qs = next((q for q in full["questions"] if q["question_id"] == question_id), None)
         if qs is None or qs["attempt_count"] == 0:

@@ -206,13 +206,16 @@ export async function getClassProfile(classId: string, subject: string) {
     }
     weak_points: Array<{
       knowledge_point_key: string
+      knowledge_point_name: string
       avg_mastery: number
       weak_student_count: number
       trend: string | null
     }>
     common_errors: Array<{
       error_code: string
+      error_name: string
       knowledge_point_key: string
+      knowledge_point_name: string
       occurrence_count: number
       affected_student_count: number
     }>

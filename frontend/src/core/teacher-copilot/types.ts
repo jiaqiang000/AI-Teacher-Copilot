@@ -99,6 +99,7 @@ export interface StudentProfile {
   }
   knowledge_points: Array<{
     knowledge_point_key: string
+    knowledge_point_name: string
     attempt_count: number
     mastery: number | null
     recent_performance: number | null
@@ -108,13 +109,16 @@ export interface StudentProfile {
   }>
   weak_points: Array<{
     knowledge_point_key: string
+    knowledge_point_name: string
     mastery: number
     trend: string | null
     evidence_count: number
   }>
   recurring_errors: Array<{
     error_code: string
+    error_name: string
     knowledge_point_key: string
+    knowledge_point_name: string
     occurrence_count: number
     recent_occurrence_count: number
     last_occurred_at: string | null
@@ -149,6 +153,7 @@ export interface HomeworkAnalysis {
   }
   knowledge_points: Array<{
     knowledge_point_key: string
+    knowledge_point_name: string
     participating_student_count: number
     avg_performance: number | null
     low_performance_student_count: number
@@ -162,7 +167,9 @@ export interface HomeworkAnalysis {
     error_rate: number | null
     common_errors: Array<{
       error_code: string
+      error_name: string
       knowledge_point_key: string
+      knowledge_point_name: string
       occurrence_count: number
       affected_student_count: number
     }>
