@@ -69,6 +69,7 @@ export default function AgentChatPage() {
   }>();
 
   const { agent } = useAgent(agent_name);
+  const isTeacherCopilot = agent_name === "teacher-copilot";
 
   const { threadId, setThreadId, isNewThread, setIsNewThread, isMock } =
     useThreadChat();
@@ -404,6 +405,7 @@ export default function AgentChatPage() {
                     </div>
                   )}
 
+                  {/* 教师欢迎页只保留作业批改任务，其他 Agent 继续使用 DeerFlow 默认入口。 */}
                   <InputBox
                     className={cn(
                       "bg-background/5 w-full",
@@ -415,10 +417,17 @@ export default function AgentChatPage() {
                     draftAgentName={agent_name}
                     defaultModelName={agent?.model}
                     submitAriaLabels={
-                      agent_name === "teacher-copilot"
+                      isTeacherCopilot
                         ? { send: t.inputBox.send, stop: t.inputBox.stop }
                         : undefined
                     }
+                    quickSuggestions={
+                      isTeacherCopilot
+                        ? t.teacherCopilot.quickSuggestions
+                        : undefined
+                    }
+                    showSurpriseMe={!isTeacherCopilot}
+                    showCreateMenu={!isTeacherCopilot}
                     autoFocus={isWelcomeMode}
                     status={
                       thread.error

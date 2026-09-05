@@ -138,6 +138,24 @@ export const zhCN: Translations = {
     currentGradingResult: "只展示当前有效批改结果",
     averagePerformance: "平均表现",
     questionAnalysis: "题目分析",
+    quickSuggestions: [
+      {
+        suggestion: "分析班级学情",
+        prompt: "分析八三班的学习情况，包括平均得分率、学习趋势和薄弱知识点。",
+        icon: GraduationCapIcon,
+      },
+      {
+        suggestion: "讲评最近作业",
+        prompt:
+          "分析八三班《单元练习》的完成率、题目表现和需要优先讲评的内容。",
+        icon: ShapesIcon,
+      },
+      {
+        suggestion: "诊断学生薄弱点",
+        prompt: "诊断张三近期的数学薄弱知识点，并给出针对性的分层练习建议。",
+        icon: MicroscopeIcon,
+      },
+    ],
   },
 
   // Welcome

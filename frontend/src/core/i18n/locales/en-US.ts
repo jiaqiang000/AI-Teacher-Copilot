@@ -143,6 +143,26 @@ export const enUS: Translations = {
     currentGradingResult: "Showing only the current grading result",
     averagePerformance: "Average performance",
     questionAnalysis: "Question analysis",
+    quickSuggestions: [
+      {
+        suggestion: "Analyze class learning",
+        prompt:
+          "Analyze Class 83's learning performance, including average score rate, learning trends, and weak knowledge points.",
+        icon: GraduationCapIcon,
+      },
+      {
+        suggestion: "Review recent homework",
+        prompt:
+          "Analyze Class 83's Unit Practice completion rate, question performance, and the topics that should be reviewed first.",
+        icon: ShapesIcon,
+      },
+      {
+        suggestion: "Diagnose student gaps",
+        prompt:
+          "Diagnose Zhang San's recent weak points in mathematics and suggest targeted, leveled practice.",
+        icon: MicroscopeIcon,
+      },
+    ],
   },
 
   // Welcome

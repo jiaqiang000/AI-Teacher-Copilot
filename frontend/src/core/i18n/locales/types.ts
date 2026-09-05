@@ -93,6 +93,11 @@ export interface Translations {
     currentGradingResult: string;
     averagePerformance: string;
     questionAnalysis: string;
+    quickSuggestions: {
+      suggestion: string;
+      prompt: string;
+      icon: LucideIcon;
+    }[];
   };
 
   // Welcome
