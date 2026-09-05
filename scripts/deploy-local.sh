@@ -3,7 +3,7 @@
 #
 # 用法(在 deer-flow/ 根目录执行):
 #   ./scripts/deploy-local.sh              # 启动后端(uvicorn :8001)+ 前端(next start :3000)
-#   ./scripts/deploy-local.sh --seed       # 首次部署:预置演示数据(30 学生/4 周)与双角色账号
+#   ./scripts/deploy-local.sh --seed       # 初始化双角色账号（班级作业数据使用现有数据库）
 #   ./scripts/deploy-local.sh --rebuild    # 强制重建前端生产包
 #   ./scripts/deploy-local.sh --stop       # 停止前后端进程
 #
@@ -81,9 +81,8 @@ start_backend() {
 }
 
 run_seed() {
-  echo "[2/4] 预置演示数据与双角色账号(幂等)..."
+  echo "[2/4] 初始化双角色账号(幂等)..."
   cd "$BACKEND"
-  .venv/bin/python -m app.teacher_copilot.db.seed.seed_v2
   .venv/bin/python -m app.teacher_copilot.db.seed.seed_accounts
   echo "  seed 完成 ✔"
 }
