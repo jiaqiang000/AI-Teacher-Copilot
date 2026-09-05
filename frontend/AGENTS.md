@@ -17,6 +17,8 @@ DeerFlow Frontend is a Next.js 16 web interface for an AI agent system. It commu
 
 ## Commands
 
+智能作业批改登录页遵循 Figma `76:3`：邮箱密码在上，教师/学生演示在下。演示按钮仅发送 role/remember_me，不填充表单、不写 localStorage；成功整页进入 `/workspace` 重新读取会话并按角色分流，不沿用 next。`/welcome` 兼容跳转 `/login`。测试：`tests/e2e-auth/demo-login.spec.ts`；可用 `PLAYWRIGHT_CHANNEL=chrome` 复用本机 Chrome。
+
 | Command          | Purpose                                                             |
 | ---------------- | ------------------------------------------------------------------- |
 | `pnpm dev`       | Platform-aware dev server (Webpack on Windows, Turbopack elsewhere) |
@@ -113,3 +115,13 @@ routes, writes the detailed result to `.next/performance-results.json`, and comp
 totals with `performance-budgets.json`. Fix route ownership or split points when a
 budget fails; do not raise a ceiling without documenting and reviewing the measured
 regression.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { RememberSessionOption } from "@/components/auth/remember-session-option";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,9 @@ export default function LoginPage() {
       : "",
   );
   const [loading, setLoading] = useState(false);
+  const [demoRole, setDemoRole] = useState<"teacher" | "student" | null>(null);
+  // 同步锁防止快速连点同时签发不同身份的会话。
+  const loginPending = useRef(false);
 
   // Get next parameter for validated redirect
   const nextParam = searchParams.get("next");
@@ -107,12 +110,15 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loginPending.current) return;
+    loginPending.current = true;
     setError("");
     setLoading(true);
 
     if (!isLogin && !regularSignupAllowed) {
       setError(t.login.adminSetupRequiredDescription);
       setLoading(false);
+      loginPending.current = false;
       return;
     }
 
@@ -154,17 +160,50 @@ export default function LoginPage() {
       setError(t.login.networkError);
     } finally {
       setLoading(false);
+      loginPending.current = false;
+    }
+  };
+
+  const handleDemoLogin = async (role: "teacher" | "student") => {
+    if (loginPending.current) return;
+    loginPending.current = true;
+    setDemoRole(role);
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/v1/auth/login/demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ role, remember_me: rememberMe }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(parseAuthError(data).message);
+        setLoading(false);
+        setDemoRole(null);
+        loginPending.current = false;
+        return;
+      }
+      // 不填充或保存体验凭据；整页导航重新读取 Cookie，并按真实角色分流。
+      // 不沿用 next 参数，避免进入另一个角色的页面。
+      window.location.assign("/workspace");
+    } catch {
+      setError(t.login.networkError);
+      setLoading(false);
+      setDemoRole(null);
+      loginPending.current = false;
     }
   };
 
   return (
-    <div className="bg-background relative flex min-h-screen items-center justify-center overflow-x-hidden overflow-y-auto">
-      {/* 003:品牌化背景(无 Figma 稿)—— 径向渐变代替 DeerFlow 鹿纹网格 */}
+    <div className="bg-background relative flex min-h-screen items-center justify-center overflow-x-hidden overflow-y-auto p-6">
+      {/* Figma 76:3：邮箱密码在上、静默演示入口在下。 */}
       <div
         aria-hidden
-        className="absolute inset-0 z-0 bg-gradient-to-b from-background via-background to-primary/10"
+        className="from-background via-background to-primary/10 absolute inset-0 z-0 bg-gradient-to-b"
       />
-      <div className="border-border/20 bg-background/5 w-full max-w-md space-y-6 rounded-3xl border p-8 backdrop-blur-sm">
+      <div className="border-border bg-background relative z-10 w-full max-w-xl space-y-6 rounded-3xl border p-6 sm:p-8">
         <div className="text-center">
           <h1 className="text-foreground font-serif text-3xl">智能作业批改</h1>
           <p className="text-muted-foreground mt-2">
@@ -249,7 +288,11 @@ export default function LoginPage() {
             onCheckedChange={setRememberMe}
           />
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && (
+            <p role="alert" className="text-sm text-red-500">
+              {error}
+            </p>
+          )}
 
           <Button type="submit" className="w-full" disabled={loading}>
             {loading
@@ -260,9 +303,46 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        {/* 003:品牌化隐藏 SSO 登录入口与注册引导,仅保留本地账号登录 */}
-        {false && <div className="hidden" />}
-
+        <p className="text-muted-foreground text-center text-xs">
+          或选择下方演示身份，一键进入体验
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2" aria-label="演示登录">
+          {(
+            [
+              {
+                role: "teacher",
+                title: "教师演示",
+                description: "出题、发布、学情画像、作业分析、Copilot 问答",
+              },
+              {
+                role: "student",
+                title: "学生演示",
+                description: "查看作业、上传作答、实时批改进度与结果",
+              },
+            ] as const
+          ).map(({ role, title, description }) => (
+            <button
+              key={role}
+              type="button"
+              aria-label={title}
+              aria-busy={demoRole === role}
+              disabled={loading || systemNeedsAdminSetup}
+              onClick={() => void handleDemoLogin(role)}
+              className="border-border hover:border-primary focus-visible:ring-ring flex flex-col gap-2 rounded-[14px] border p-5 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <span className="text-lg font-medium">{title}</span>
+              <span className="text-muted-foreground text-sm leading-5">
+                {description}
+              </span>
+              <span
+                className="text-primary mt-auto text-xs leading-5"
+                aria-live="polite"
+              >
+                {demoRole === role ? "正在登录…" : `使用${title}账号 →`}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

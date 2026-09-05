@@ -28,7 +28,11 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        // 本地可复用已安装 Chrome，避免为验证重复下载浏览器。
+        channel: process.env.PLAYWRIGHT_CHANNEL,
+      },
     },
   ],
 
