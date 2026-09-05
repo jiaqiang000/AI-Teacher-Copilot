@@ -1,6 +1,6 @@
 ### Gateway API (`app/gateway/`)
 
-Teacher Copilot 演示登录由 `POST /api/v1/auth/login/demo` 处理：只允许 teacher/student，固定账号定义与 seed 共享。签发会话前必须验证非管理员、无需初始化、AccountLink 精确匹配预置业务 ID；不可用返回 503，禁止在登录请求内建号或重置密码。该路由与普通登录一样是精确公开路径，免首次双提交令牌但仍检查 Origin。回归测试：`tests/test_demo_login.py`。
+Teacher Copilot 演示登录由 `POST /api/v1/auth/login/demo` 处理：teacher/student 选择原有固定体验凭据，直接调用 `login_local`。按用户明确要求，不添加管理员限制或业务映射检查，不修改账号权限；认证、限流、Cookie 和 Origin 行为复用普通登录。回归测试：`tests/test_demo_login.py`。
 
 FastAPI listens on port 8001; health: `GET /health`. Set `GATEWAY_ENABLE_DOCS=false` to disable the default `/docs`, `/redoc`, and `/openapi.json` endpoints.
 

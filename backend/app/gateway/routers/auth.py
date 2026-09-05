@@ -327,34 +327,17 @@ async def login_local(
 
 @router.post("/login/demo", response_model=LoginResponse)
 async def login_demo(request: Request, response: Response, body: DemoLoginRequest):
-    """后台验证固定体验账号，签发与普通登录相同的 HttpOnly 会话。"""
-    from app.teacher_copilot.db.engine import get_session
-    from app.teacher_copilot.db.models.org import AccountLink
+    """使用原有体验凭据执行普通登录，凭据仅留在后台，不额外限制账号权限。"""
     from app.teacher_copilot.demo_accounts import ACCOUNTS
 
-    client_ip = _get_client_ip(request)
-    _check_rate_limit(client_ip)
-    email, password, _, role, biz_id, _ = next(account for account in ACCOUNTS if account[3] == body.role)
-    user = None
-    available = False
-    try:
-        user = await get_local_provider().authenticate({"email": email, "password": password})
-        if user is not None and user.email == email and user.system_role == "user" and not user.needs_setup:
-            async with get_session() as session:
-                link = await session.get(AccountLink, str(user.id))
-                available = link is not None and link.biz_type == role and link.biz_id == biz_id
-    except Exception:
-        # 不将数据库详情或体验凭据泄漏给浏览器；登录请求不自动建号/重置密码。
-        logger.warning("Demo login dependencies unavailable for role %s", body.role)
-
-    if not available or user is None:
-        _record_login_failure(client_ip)
-        raise HTTPException(status_code=503, detail="体验账号暂不可用，请联系管理员或使用邮箱密码登录。")
-
-    _record_login_success(client_ip)
-    token = create_access_token(str(user.id), token_version=user.token_version)
-    _set_session_cookie(response, token, request, remember_me=body.remember_me)
-    return LoginResponse(expires_in=get_auth_config().token_expiry_days * 24 * 3600)
+    account = next(account for account in ACCOUNTS if account[3] == body.role)
+    # 直接复用普通登录：校验密码、登录限流和 Cookie 行为保持完全一致。
+    return await login_local(
+        request=request,
+        response=response,
+        form_data=OAuth2PasswordRequestForm(username=account[0], password=account[1]),
+        remember_me=body.remember_me,
+    )
 
 
 def _local_registration_enabled() -> bool:

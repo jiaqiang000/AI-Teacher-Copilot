@@ -63,21 +63,11 @@ def test_rejects_arbitrary_identity(demo_client, payload):
     provider.authenticate.assert_not_called()
 
 
-@pytest.mark.parametrize("problem", ["missing", "admin", "setup", "mapping", "database"])
-def test_unavailable_demo_never_issues_session(demo_client, problem):
-    client, provider, session = demo_client
-    if problem == "missing":
-        provider.authenticate.return_value = None
-    elif problem == "admin":
-        provider.authenticate.return_value.system_role = "admin"
-    elif problem == "setup":
-        provider.authenticate.return_value.needs_setup = True
-    elif problem == "mapping":
-        session.get.return_value = MagicMock(biz_type="student", biz_id="stu_003")
-    else:
-        session.get.side_effect = RuntimeError("database unavailable")
+def test_unavailable_demo_never_issues_session(demo_client):
+    client, provider, _ = demo_client
+    provider.authenticate.return_value = None
     response = client.post("/api/v1/auth/login/demo", json={"role": "teacher"})
-    assert response.status_code == 503
+    assert response.status_code == 401
     assert "access_token" not in response.cookies
 
 
@@ -88,9 +78,19 @@ def test_cross_origin_cannot_switch_session(demo_client):
     provider.authenticate.assert_not_called()
 
 
+@pytest.mark.parametrize("system_role", ["admin", "user"])
+def test_demo_accepts_existing_account_permissions(demo_client, system_role):
+    """用户要求体验登录与普通登录一致，不额外检查权限或业务库。"""
+    client, provider, session = demo_client
+    provider.authenticate.return_value.system_role = system_role
+    session.get.side_effect = RuntimeError("业务库不参与登录")
+    assert client.post("/api/v1/auth/login/demo", json={"role": "teacher"}).status_code == 200
+    session.get.assert_not_called()
+
+
 def test_failures_are_rate_limited(demo_client):
     client, provider, _ = demo_client
     provider.authenticate.return_value = None
     for _ in range(5):
-        assert client.post("/api/v1/auth/login/demo", json={"role": "teacher"}).status_code == 503
+        assert client.post("/api/v1/auth/login/demo", json={"role": "teacher"}).status_code == 401
     assert client.post("/api/v1/auth/login/demo", json={"role": "teacher"}).status_code == 429

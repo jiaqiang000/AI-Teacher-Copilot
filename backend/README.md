@@ -555,7 +555,7 @@ See the [LICENSE](../LICENSE) file in the project root.
 
 `POST /api/v1/auth/login/demo` 接收 `{ "role": "teacher" | "student", "remember_me": true }`。
 后端验证固定体验账号及业务身份后，复用普通登录的 HttpOnly 会话与 CSRF Cookie；响应不包含账号密码或令牌。
-体验账号及业务映射必须已初始化；不可用时返回 503，不会自动创建账号、重置密码或切换管理员身份。
+直接使用原有体验账号密码调用普通登录；不额外限制管理员或检查业务映射，不修改账号权限。密码错误与普通登录一样返回 401。
 这是共享体验账号，不应用于真实师生隐私数据。修改后需重启 Gateway，前端生产模式需重新构建。
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
