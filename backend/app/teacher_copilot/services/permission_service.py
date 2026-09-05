@@ -60,6 +60,23 @@ class TeacherPermissionService(BaseRepository):
         if found is None:
             raise PermissionDenied(f"无权访问学生 {student_id}")
 
+    async def ensure_student_owned(self, teacher_id: str, student_id: str) -> ClassRoom:
+        """校验学生属于当前教师任一班级,返回其班级实体。"""
+        try:
+            found = await self.session.scalar(
+                select(ClassRoom)
+                .join(ClassStudent, ClassStudent.class_id == ClassRoom.class_id)
+                .where(
+                    ClassRoom.teacher_id == teacher_id,
+                    ClassStudent.student_id == student_id,
+                )
+            )
+        except Exception as exc:  # pragma: no cover
+            raise wrap_data_error(exc) from exc
+        if found is None:
+            raise PermissionDenied(f"无权访问学生 {student_id}")
+        return found
+
     async def ensure_homework_owned(self, teacher_id: str, homework_id: str) -> Homework:
         """校验作业归属当前教师,返回 Homework 实体。"""
         try:

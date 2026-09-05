@@ -10,9 +10,12 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request
 from sqlalchemy import select
+
 from app.gateway.deps import get_current_user_from_request
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.org import AccountLink
+from app.teacher_copilot.errors import PermissionDenied
+from deerflow.runtime.user_context import resolve_runtime_user_id
 
 
 async def _resolve_biz_id(request: Request, biz_type: str) -> str:
@@ -38,6 +41,25 @@ async def _resolve_biz_id(request: Request, biz_type: str) -> str:
 async def get_teacher_id(request: Request) -> str:
     """教师接口依赖:当前登录用户对应的 teacher_id。"""
     return await _resolve_biz_id(request, "teacher")
+
+
+async def get_teacher_id_from_runtime(runtime: object | None) -> str:
+    """从 DeerFlow ToolRuntime 的可信用户上下文解析 teacher_id。
+
+    Agent 工具没有 FastAPI Request,因此复用 DeerFlow 的 runtime 用户解析顺序，
+    再查同一张 AccountLink 映射表；缺少真实登录身份时不允许使用工具参数冒充教师。
+    """
+    user_id = resolve_runtime_user_id(runtime)
+    async with get_session() as session:
+        link = await session.scalar(
+            select(AccountLink).where(
+                AccountLink.user_id == user_id,
+                AccountLink.biz_type == "teacher",
+            )
+        )
+    if link is None:
+        raise PermissionDenied("登录用户未映射教师业务身份")
+    return link.biz_id
 
 
 async def get_student_id(request: Request) -> str:

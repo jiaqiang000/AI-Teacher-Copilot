@@ -6,23 +6,26 @@
 
 from __future__ import annotations
 
-from langchain_core.tools import tool
+from langchain.tools import tool
 from sqlalchemy import select
 
+from app.teacher_copilot.api.identity import get_teacher_id_from_runtime
 from app.teacher_copilot.api.response import fail, ok
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.homework import Homework
 from app.teacher_copilot.db.models.org import ClassRoom, ClassStudent, Student
 from app.teacher_copilot.errors import TcError
+from app.teacher_copilot.services.permission_service import TeacherPermissionService
 from app.teacher_copilot.tools.schemas.inputs import (
     ListClassesInput,
     ListClassHomeworksInput,
     ListClassStudentsInput,
 )
+from deerflow.tools.types import Runtime
 
 
 @tool("list_classes", args_schema=ListClassesInput)
-async def list_classes(keyword: str = "") -> dict:
+async def list_classes(runtime: Runtime, keyword: str = "") -> dict:
     """按名称关键字查询真实班级列表(谁的名字带这个关键字)。
 
     教师提到"八三班/三班/某班"等名称时,先调用本工具把班名解析为 class_id,
@@ -30,8 +33,13 @@ async def list_classes(keyword: str = "") -> dict:
     返回为空表示关键字无匹配,此时应请教师确认班级名称。
     """
     try:
+        teacher_id = await get_teacher_id_from_runtime(runtime)
         async with get_session() as session:
-            stmt = select(ClassRoom.class_id, ClassRoom.name).order_by(ClassRoom.class_id)
+            stmt = (
+                select(ClassRoom.class_id, ClassRoom.name)
+                .where(ClassRoom.teacher_id == teacher_id)
+                .order_by(ClassRoom.class_id)
+            )
             if keyword:
                 stmt = stmt.where(ClassRoom.name.contains(keyword))
             rows = list(await session.execute(stmt))
@@ -41,13 +49,16 @@ async def list_classes(keyword: str = "") -> dict:
 
 
 @tool("list_class_students", args_schema=ListClassStudentsInput)
-async def list_class_students(class_id: str) -> dict:
+async def list_class_students(runtime: Runtime, class_id: str) -> dict:
     """查询指定班级的真实学生成员列表(谁在这个班级里)。
 
     用于全班批量诊断/练习等需要 student_id 集合的任务;不计算学生成绩或掌握度,
     需要长期学情时用 get_class_profile。
     """
     try:
+        teacher_id = await get_teacher_id_from_runtime(runtime)
+        async with TeacherPermissionService() as permissions:
+            await permissions.ensure_class_owned(teacher_id, class_id)
         async with get_session() as session:
             rows = await session.execute(
                 select(Student.student_id, Student.name)
@@ -62,8 +73,12 @@ async def list_class_students(class_id: str) -> dict:
 
 @tool("list_class_homeworks", args_schema=ListClassHomeworksInput)
 async def list_class_homeworks(
-    class_id: str, subject: str | None = None,
-    start_time: str | None = None, end_time: str | None = None, limit: int = 20,
+    runtime: Runtime,
+    class_id: str,
+    subject: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    limit: int = 20,
 ) -> dict:
     """查询指定班级在某个学科、时间范围内的作业列表(这个时间范围有哪些作业)。
 
@@ -71,8 +86,14 @@ async def list_class_homeworks(
     需要某份作业表现时用 get_homework_analysis。
     """
     try:
+        teacher_id = await get_teacher_id_from_runtime(runtime)
+        async with TeacherPermissionService() as permissions:
+            await permissions.ensure_class_owned(teacher_id, class_id)
         async with get_session() as session:
-            stmt = select(Homework).where(Homework.class_id == class_id)
+            stmt = select(Homework).where(
+                Homework.class_id == class_id,
+                Homework.teacher_id == teacher_id,
+            )
             if subject:
                 stmt = stmt.where(Homework.subject == subject)
             rows = await session.scalars(
