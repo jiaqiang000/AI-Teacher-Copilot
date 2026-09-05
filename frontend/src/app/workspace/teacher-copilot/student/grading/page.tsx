@@ -113,15 +113,17 @@ export default function StudentGradingPage() {
     setError("");
     try {
       const url = await uploadImage(file);
-      setUploadedUrl(url);
       const res = await submitAnswer({
         question_id: questionId,
         homework_id: homeworkId,
         image_url: url,
       });
+      // 只有提交接口接受后才展示“已上传并提交”,上传成功不代表业务提交成功。
+      setUploadedUrl(url);
       setSubmissionId(res.submission_id);
       setStatus(res.status);
       setStage(res.current_stage);
+      setResult(null);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -133,6 +135,7 @@ export default function StudentGradingPage() {
     status === "SUCCEEDED"
       ? STAGE_KEYS.length
       : STAGE_KEYS.findIndex((key) => key === stage);
+  const isTerminal = status === "SUCCEEDED" || status === "FAILED";
 
   return (
     <div className="max-w-3xl space-y-5 p-4 sm:p-8">
@@ -169,9 +172,13 @@ export default function StudentGradingPage() {
 
           <section className="rounded-lg border p-4">
             <h2 className="mb-2 text-sm font-semibold">你的答案</h2>
-            {!uploadedUrl && !submissionId && (
+            {(!submissionId || isTerminal) && (
               <label className="text-muted-foreground block cursor-pointer rounded border border-dashed p-4 text-center text-sm hover:bg-gray-50">
-                {busy ? "上传中..." : "选择手写作答图片上传(jpg/png, ≤10MB)"}
+                {busy
+                  ? "上传中..."
+                  : submissionId
+                    ? "重新选择作答图片并提交(jpg/png, ≤10MB)"
+                    : "选择手写作答图片上传(jpg/png, ≤10MB)"}
                 <input
                   type="file"
                   accept="image/*"
@@ -186,7 +193,9 @@ export default function StudentGradingPage() {
             {(uploadedUrl || submissionId) && (
               <p className="text-muted-foreground text-sm">
                 {uploadedUrl
-                  ? "✚ 作答图片已上传并提交批改"
+                  ? isTerminal
+                    ? "✚ 当前作答已完成,可重新提交新图片"
+                    : "✚ 作答图片已上传并提交批改"
                   : `✚ 已提交(${submissionId})`}
               </p>
             )}
