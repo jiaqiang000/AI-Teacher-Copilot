@@ -195,7 +195,9 @@ export default function StudentGradingPage() {
           {submissionId && (
             <section className="rounded-lg border p-4">
               <div className="flex items-center justify-between">
-                <h2 className="font-semibold">AI Teacher · 正在批改</h2>
+                <h2 className="font-semibold">
+                  AI Teacher · {statusLabel(status, t.teacherCopilot)}
+                </h2>
                 <span className="text-muted-foreground text-xs">
                   状态：{statusLabel(status, t.teacherCopilot)} · 阶段：
                   {stageLabel(stage, t.teacherCopilot)}

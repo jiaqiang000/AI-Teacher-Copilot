@@ -293,6 +293,7 @@ export function InputBox({
   draftThreadId = threadId,
   draftAgentName,
   defaultModelName,
+  submitAriaLabels,
   initialValue,
   onContextChange,
   onFollowupsVisibilityChange,
@@ -328,6 +329,11 @@ export function InputBox({
    * (issue #4336). ``null`` / undefined = no agent default → use models[0].
    */
   defaultModelName?: string | null;
+  /** 教师 Copilot 可按当前页面语言覆盖发送和停止的辅助阅读标签。 */
+  submitAriaLabels?: {
+    send: string;
+    stop: string;
+  };
   initialValue?: string;
   onContextChange?: (
     context: Omit<
@@ -2706,9 +2712,14 @@ export function InputBox({
               </ModelSelectorContent>
             </ModelSelector>
             <PromptInputSubmit
-              aria-label={
-                status === "streaming" ? t.inputBox.stop : t.inputBox.send
-              }
+              {...(submitAriaLabels
+                ? {
+                    "aria-label":
+                      status === "streaming"
+                        ? submitAriaLabels.stop
+                        : submitAriaLabels.send,
+                  }
+                : {})}
               className="rounded-full"
               disabled={composerLocked}
               variant="outline"

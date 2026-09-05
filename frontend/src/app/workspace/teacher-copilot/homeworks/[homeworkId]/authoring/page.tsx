@@ -50,6 +50,7 @@ export default function AuthoringPage() {
   const [qtype, setQtype] = useState("calculation");
   const [maxScore, setMaxScore] = useState(10);
   const [difficulty, setDifficulty] = useState("easy");
+  const [homeworkStatus, setHomeworkStatus] = useState("");
   const [publishHint, setPublishHint] = useState("");
   const [error, setError] = useState("");
 
@@ -64,6 +65,7 @@ export default function AuthoringPage() {
     getHomework(routeHomeworkId)
       .then((homework) => {
         setHomeworkId(homework.homework_id);
+        setHomeworkStatus(homework.status);
         setClassId(homework.class_id);
         setSubject(homework.subject);
         setName(homework.name);
@@ -83,6 +85,7 @@ export default function AuthoringPage() {
     try {
       const res = await createHomework({ name, class_id: classId, subject });
       setHomeworkId(res.homework_id);
+      setHomeworkStatus(res.status);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -163,7 +166,8 @@ export default function AuthoringPage() {
     if (!homeworkId) return;
     setPublishHint("发布中...");
     try {
-      await publishHomework(homeworkId);
+      const res = await publishHomework(homeworkId);
+      setHomeworkStatus(res.status);
       setPublishHint("已发布 ✓");
     } catch (e) {
       setPublishHint("");
@@ -182,7 +186,9 @@ export default function AuthoringPage() {
             </h1>
             <p className="text-muted-foreground text-sm">
               {homeworkId
-                ? statusLabel("DRAFT", t.teacherCopilot)
+                ? homeworkStatus
+                  ? statusLabel(homeworkStatus, t.teacherCopilot)
+                  : "加载中..."
                 : "未创建草稿"}{" "}
               · {selectedClass?.name ?? "请选择班级"} ·{" "}
               {subjectLabel(subject, t.teacherCopilot)}

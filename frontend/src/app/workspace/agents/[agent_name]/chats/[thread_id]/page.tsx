@@ -414,6 +414,11 @@ export default function AgentChatPage() {
                     draftThreadId={isNewThread ? "new" : threadId}
                     draftAgentName={agent_name}
                     defaultModelName={agent?.model}
+                    submitAriaLabels={
+                      agent_name === "teacher-copilot"
+                        ? { send: t.inputBox.send, stop: t.inputBox.stop }
+                        : undefined
+                    }
                     autoFocus={isWelcomeMode}
                     status={
                       thread.error
