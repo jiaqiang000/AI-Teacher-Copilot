@@ -36,9 +36,9 @@ export default function DashboardPage() {
   const [homeworks, setHomeworks] = useState<
     Awaited<ReturnType<typeof getTeacherHomeworks>>
   >([]);
-  const [hwAnalysis, setHwAnalysis] = useState<Awaited<
-    ReturnType<typeof getHomeworkAnalysis>
-  > | null>(null);
+  const [hwAnalyses, setHwAnalyses] = useState<
+    Record<string, Awaited<ReturnType<typeof getHomeworkAnalysis>> | null>
+  >({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -79,16 +79,24 @@ export default function DashboardPage() {
             ),
           ),
         );
-        const latest = homeworkList[0];
-        if (latest) {
-          try {
-            setHwAnalysis(
-              await getHomeworkAnalysis(latest.homework_id, latest.class_id),
-            );
-          } catch {
-            setHwAnalysis(null);
-          }
-        }
+        // 工作台只展示前五份作业,分别复用既有作业分析接口,避免把第一份数据误套到其他卡片。
+        const recentHomeworks = homeworkList.slice(0, 5);
+        const analysisEntries = await Promise.all(
+          recentHomeworks.map(async (homework) => {
+            try {
+              return [
+                homework.homework_id,
+                await getHomeworkAnalysis(
+                  homework.homework_id,
+                  homework.class_id,
+                ),
+              ] as const;
+            } catch {
+              return [homework.homework_id, null] as const;
+            }
+          }),
+        );
+        setHwAnalyses(Object.fromEntries(analysisEntries));
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
@@ -98,10 +106,9 @@ export default function DashboardPage() {
     (sum, profile) => sum + profile.attention_students.length,
     0,
   );
-  const pendingCount = homeworks.filter(
+  const publishedCount = homeworks.filter(
     (homework) => homework.status === "PUBLISHED",
   ).length;
-  const completionRate = hwAnalysis?.completion?.completion_rate ?? null;
   const firstProfile = classes[0] ? profiles[classes[0].class_id] : undefined;
 
   return (
@@ -150,9 +157,9 @@ export default function DashboardPage() {
                 sub="当前授课"
               />
               <StatCard
-                label="待处理作业"
-                value={String(pendingCount)}
-                sub="已发布作业"
+                label="已发布作业"
+                value={String(publishedCount)}
+                sub="当前授课"
               />
               <StatCard
                 label="重点学生"
@@ -216,9 +223,8 @@ export default function DashboardPage() {
                         key={homework.homework_id}
                         homework={homework}
                         completion={
-                          homework.homework_id === homeworks[0]?.homework_id
-                            ? completionRate
-                            : null
+                          hwAnalyses[homework.homework_id]?.completion
+                            ?.completion_rate ?? null
                         }
                         labels={t.teacherCopilot}
                       />
