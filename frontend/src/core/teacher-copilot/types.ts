@@ -3,6 +3,23 @@
 
 export type Subject = "math" | "english"
 
+export interface TeacherClassSummary {
+  class_id: string
+  name: string
+  student_count: number
+}
+
+export interface HomeworkSummary {
+  homework_id: string
+  name: string
+  class_id: string
+  class_name: string
+  subject: Subject
+  status: string
+  deadline: string | null
+  published_at: string | null
+}
+
 export interface Score {
   earned: number
   max: number
@@ -56,13 +73,24 @@ export interface GradingResult {
   } | null
   english_essay_detail?: {
     dimension_scores: Record<string, { score: number; max_score: number }>
-    language_errors?: Array<{ error_code: string; original: string; suggestion: string }>
+    language_errors?: Array<{
+      error_code: string
+      original: string
+      suggestion: string
+    }>
     evidence?: Record<string, string[]>
   } | null
 }
 
 export interface StudentProfile {
-  basic: { student_id: string; subject: Subject; algorithm_version: string }
+  basic: {
+    student_id: string
+    student_name?: string
+    class_id?: string
+    class_name?: string
+    subject: Subject
+    algorithm_version: string
+  }
   overview: {
     attempt_count: number
     avg_score_rate: number | null
@@ -78,9 +106,27 @@ export interface StudentProfile {
     last_practiced_at: string | null
     common_error_codes: string[]
   }>
-  weak_points: Array<{ knowledge_point_key: string; mastery: number; trend: string | null; evidence_count: number }>
-  recurring_errors: Array<{ error_code: string; knowledge_point_key: string; occurrence_count: number; recent_occurrence_count: number; last_occurred_at: string | null }>
-  difficulty_performance: Record<string, { attempt_count: number; avg_score_rate: number | null; recent_score_rate: number | null }> | null
+  weak_points: Array<{
+    knowledge_point_key: string
+    mastery: number
+    trend: string | null
+    evidence_count: number
+  }>
+  recurring_errors: Array<{
+    error_code: string
+    knowledge_point_key: string
+    occurrence_count: number
+    recent_occurrence_count: number
+    last_occurred_at: string | null
+  }>
+  difficulty_performance: Record<
+    string,
+    {
+      attempt_count: number
+      avg_score_rate: number | null
+      recent_score_rate: number | null
+    }
+  > | null
 }
 
 export interface HomeworkAnalysis {
@@ -94,9 +140,19 @@ export interface HomeworkAnalysis {
   performance: {
     graded_student_count: number
     avg_score_rate: number | null
-    score_distribution: { below_60: number; from_60_to_79: number; from_80_to_89: number; from_90_to_100: number } | null
+    score_distribution: {
+      below_60: number
+      from_60_to_79: number
+      from_80_to_89: number
+      from_90_to_100: number
+    } | null
   }
-  knowledge_points: Array<{ knowledge_point_key: string; participating_student_count: number; avg_performance: number | null; low_performance_student_count: number }>
+  knowledge_points: Array<{
+    knowledge_point_key: string
+    participating_student_count: number
+    avg_performance: number | null
+    low_performance_student_count: number
+  }>
   questions: Array<{
     question_id: string
     question_no: number
@@ -104,7 +160,17 @@ export interface HomeworkAnalysis {
     avg_score_rate: number | null
     error_student_count: number
     error_rate: number | null
-    common_errors: Array<{ error_code: string; knowledge_point_key: string; occurrence_count: number; affected_student_count: number }>
+    common_errors: Array<{
+      error_code: string
+      knowledge_point_key: string
+      occurrence_count: number
+      affected_student_count: number
+    }>
   }>
-  attention_students: Array<{ student_id: string; homework_score_rate: number | null; reason_codes: string[]; related_question_ids: string[] }>
+  attention_students: Array<{
+    student_id: string
+    homework_score_rate: number | null
+    reason_codes: string[]
+    related_question_ids: string[]
+  }>
 }

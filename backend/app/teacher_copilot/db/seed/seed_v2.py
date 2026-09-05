@@ -1,14 +1,8 @@
-"""部署种子:丰富演示数据(30 学生/4 周作业/批改历史,V2 T008)。
+"""写入持久化演示事实:八三班基线 + 八四/八五班差异化数据。
 
-功能:在 demo(基础教师/班级/学生/hw_004)基础上追加:
-- 作业 hw_001/hw_002/hw_003(数学,与 hw_004 构成 4 周,本周=hw_003/hw_004)
-- 每作业 3-4 道数学题(与 hw_004 类似,含题库来源题)
-- 30 名学生跨 4 周的提交与批改结果(确定性随机,seed=42):
-  分数/知识点 performance/错误(SIGN_ERROR/ARITHMETIC/GRAPH_READING 等),
-  分布凑够:张三(sta_003)短期低分+重复错误,李四(stu_011)单次错误等
-  供画像/分析/Agent(含周度复盘多智能体)真实演示。
-
-幂等:已存在 hw_001 则整体跳过;重复运行安全。
+seed_rich_data 负责八三班的既有 4 周评测世界；seed_diverse_data 负责八四班和八五班
+各自 6 周的作业、题目、提交、批改结果和诊断事实。两个入口都对已存在记录幂等处理，
+执行后数据会保留在 TC_DATABASE_URL 指向的真实业务数据库中。
 """
 
 from __future__ import annotations
@@ -20,9 +14,13 @@ from sqlalchemy import select
 
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.grading import (
-    GradingResult, GradingResultError, GradingResultKnowledgePoint, Submission,
+    GradingResult,
+    GradingResultError,
+    GradingResultKnowledgePoint,
+    Submission,
 )
 from app.teacher_copilot.db.models.homework import Homework, Question
+from app.teacher_copilot.db.models.org import ClassRoom
 
 RNG = random.Random(42)
 
@@ -52,6 +50,53 @@ QUESTIONS = {
 KFPERF = ("transposition", "combine_like_terms", "graph")
 PERF_VALUES = ("correct", "partial", "incorrect")
 ERR_CODES = ("SIGN_ERROR", "ARITHMETIC_ERROR", "MISSING_STEP", "GRAPH_READING_ERROR")
+
+# 新增班级使用独立 ID 和事实生成参数,不与 class_03 的评测世界混用。
+DIVERSE_CLASS_SPECS = (
+    {
+        "class_id": "class_04",
+        "code": "c04",
+        "student_offset": 100,
+        "student_count": 32,
+        "weekly_rates": (0.58, 0.62, 0.66, 0.72, 0.84, 0.90),
+        "completion_rates": (0.58, 0.63, 0.68, 0.72, 0.76, 0.78),
+        "knowledge_points": (
+            "math.linear_equation.combine_like_terms",
+            "math.linear_equation.arithmetic",
+            "math.linear_equation.application",
+        ),
+        "error_codes": ("ARITHMETIC_ERROR", "MISSING_STEP"),
+    },
+    {
+        "class_id": "class_05",
+        "code": "c05",
+        "student_offset": 200,
+        "student_count": 28,
+        "weekly_rates": (0.72, 0.65, 0.58, 0.50, 0.42, 0.34),
+        "completion_rates": (0.88, 0.78, 0.70, 0.62, 0.55, 0.48),
+        "knowledge_points": (
+            "math.function.graph",
+            "math.application.word_problem",
+            "math.function.coordinate",
+        ),
+        "error_codes": ("GRAPH_READING_ERROR", "SIGN_ERROR"),
+    },
+)
+
+DIVERSE_WEEK_DAYS = (42, 34, 26, 18, 10, 2)
+
+DIVERSE_QUESTION_TEMPLATES = {
+    "class_04": (
+        (1, "calculation", "easy", "合并同类项后求解方程", 10),
+        (2, "solution", "medium", "说明运算步骤并检验方程", 10),
+        (3, "solution", "hard", "一元一次方程综合应用", 15),
+    ),
+    "class_05": (
+        (1, "solution", "medium", "读取函数图像并判断变化趋势", 10),
+        (2, "solution", "hard", "根据图像信息解决综合问题", 15),
+        (3, "calculation", "medium", "列式解决实际应用问题", 10),
+    ),
+}
 
 
 async def seed_rich_data() -> None:
@@ -149,6 +194,169 @@ async def seed_rich_data() -> None:
         print("seed_rich_data: 丰富数据已写入(4 周作业/30 学生批改历史)")
 
 
+async def seed_diverse_data() -> None:
+    """为八四班/八五班写入可重复且有明显差异的多周事实。"""
+    now = datetime.utcnow()
+    async with get_session() as session:
+        for spec in DIVERSE_CLASS_SPECS:
+            class_row = await session.scalar(
+                select(ClassRoom).where(ClassRoom.class_id == spec["class_id"])
+            )
+            if class_row is None:
+                raise RuntimeError(f"演示班级 {spec['class_id']} 不存在,请先执行 seed_demo")
+
+            templates = DIVERSE_QUESTION_TEMPLATES[spec["class_id"]]
+            diagnostic_threshold = (
+                0.62 if spec["class_id"] == "class_04" else 0.78
+            )
+            for week, days_ago in enumerate(DIVERSE_WEEK_DAYS, start=1):
+                homework_id = f"hw_{spec['code']}_w{week:02d}"
+                homework = await session.scalar(
+                    select(Homework).where(Homework.homework_id == homework_id)
+                )
+                if homework is None:
+                    homework = Homework(
+                        homework_id=homework_id,
+                        name=f"{class_row.name}第{week}周数学练习",
+                        class_id=spec["class_id"],
+                        teacher_id="teacher_01",
+                        subject="math",
+                        status="PUBLISHED",
+                        published_at=now - timedelta(days=days_ago),
+                    )
+                    session.add(homework)
+
+                for question_no, qtype, difficulty, content, max_score in templates:
+                    question_id = (
+                        f"q_{spec['code']}_w{week:02d}_{question_no}"
+                    )
+                    question = await session.scalar(
+                        select(Question).where(Question.question_id == question_id)
+                    )
+                    if question is None:
+                        session.add(Question(
+                            question_id=question_id,
+                            homework_id=homework_id,
+                            question_no=question_no,
+                            subject="math",
+                            question_type=qtype,
+                            difficulty=difficulty,
+                            content=content,
+                            max_score=max_score,
+                        ))
+
+                completion_target = spec["completion_rates"][week - 1]
+                for student_index in range(1, spec["student_count"] + 1):
+                    participation = (
+                        student_index * 37 + week * 17 + len(spec["code"]) * 11
+                    ) % 100
+                    if participation >= int(completion_target * 100):
+                        continue
+
+                    student_id = f"stu_{spec['student_offset'] + student_index:03d}"
+                    for question_no, qtype, difficulty, _, max_score in templates:
+                        question_id = (
+                            f"q_{spec['code']}_w{week:02d}_{question_no}"
+                        )
+                        existing = await session.scalar(
+                            select(Submission).where(
+                                Submission.student_id == student_id,
+                                Submission.question_id == question_id,
+                            )
+                        )
+                        if existing is not None:
+                            continue
+
+                        tier = student_index % 10
+                        tier_offset = 0.12 if tier in (1, 2) else (
+                            -0.12 if tier in (0, 8, 9) else 0.0
+                        )
+                        wiggle = (
+                            (student_index * 11 + week * 7 + question_no * 5) % 7 - 3
+                        ) / 100
+                        question_offset = (0.02, 0.0, -0.03)[(question_no - 1) % 3]
+                        rate = max(
+                            0.15,
+                            min(
+                                0.98,
+                                spec["weekly_rates"][week - 1]
+                                + tier_offset
+                                + wiggle
+                                + question_offset,
+                            ),
+                        )
+                        submitted_at = now - timedelta(days=days_ago - 1)
+                        submission_id = (
+                            f"sub_{spec['code']}_w{week:02d}_"
+                            f"s{student_index:02d}_q{question_no}"
+                        )
+                        session.add(Submission(
+                            submission_id=submission_id,
+                            student_id=student_id,
+                            question_id=question_id,
+                            homework_id=homework_id,
+                            image_url=(
+                                "https://macro-oss1069.oss-cn-beijing.aliyuncs.com/"
+                                "sample_05_img_480_pert_5.1.png"
+                            ),
+                            status="SUCCEEDED",
+                            current_stage="COMPLETED",
+                            submitted_at=submitted_at,
+                        ))
+                        score_earned = round(rate * max_score, 1)
+                        grading_id = f"gr_{submission_id}"
+                        session.add(GradingResult(
+                            grading_result_id=grading_id,
+                            submission_id=submission_id,
+                            subject="math",
+                            question_type=qtype,
+                            difficulty=difficulty,
+                            score_earned=score_earned,
+                            score_max=float(max_score),
+                            score_rate=round(score_earned / max_score, 4),
+                            feedback={},
+                            math_detail=None,
+                            english_essay_detail=None,
+                            execution_meta={"source": "diverse_demo_seed"},
+                            created_at=submitted_at,
+                        ))
+
+                        if rate < diagnostic_threshold or (
+                            spec["class_id"] == "class_05"
+                            and student_index % 5 == 0
+                            and question_no == 1
+                        ):
+                            performance = (
+                                "incorrect" if rate < 0.55 else "partial"
+                            )
+                            kp_key = spec["knowledge_points"][
+                                (student_index + week + question_no)
+                                % len(spec["knowledge_points"])
+                            ]
+                            session.add(GradingResultKnowledgePoint(
+                                grading_result_id=grading_id,
+                                knowledge_point_key=kp_key,
+                                raw_name="班级专项训练知识点",
+                                performance=performance,
+                                evidence="演示数据中的步骤表现",
+                            ))
+                            error_code = spec["error_codes"][
+                                (student_index + week + question_no)
+                                % len(spec["error_codes"])
+                            ]
+                            session.add(GradingResultError(
+                                grading_result_id=grading_id,
+                                error_code=error_code,
+                                raw_type="演示数据错误类型",
+                                knowledge_point_key=kp_key,
+                                description="演示数据中的典型错误",
+                                evidence="演示批改过程",
+                            ))
+
+        await session.commit()
+        print("seed_diverse_data: 八四班/八五班差异化数据已写入(每班 6 周)", flush=True)
+
+
 if __name__ == "__main__":
     import asyncio
 
@@ -158,6 +366,7 @@ if __name__ == "__main__":
     async def _main():
         await init_db(get_config().database_url)
         await seed_rich_data()
+        await seed_diverse_data()
         await dispose_db()
 
     asyncio.run(_main())

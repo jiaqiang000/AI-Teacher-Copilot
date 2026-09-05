@@ -15,6 +15,10 @@ from app.teacher_copilot.db.models.org import ClassRoom, ClassStudent, Student, 
 TEACHER_ID = "teacher_01"
 CLASS_ID = "class_03"
 CLASS_NAME = "八三班"
+EXTRA_CLASSES = (
+    ("class_04", "八四班", 100, 32),
+    ("class_05", "八五班", 200, 28),
+)
 
 
 async def seed_demo() -> None:
@@ -36,6 +40,23 @@ async def seed_demo() -> None:
                 )
             ) is None:
                 session.add(ClassStudent(class_id=CLASS_ID, student_id=sid))
+
+        # 三班演示入口都必须对应真实组织数据,后续画像/作业事实按班级隔离生成。
+        for class_id, class_name, student_offset, student_count in EXTRA_CLASSES:
+            if await session.scalar(select(ClassRoom).where(ClassRoom.class_id == class_id)) is None:
+                session.add(ClassRoom(
+                    class_id=class_id, name=class_name, teacher_id=TEACHER_ID,
+                ))
+            for index in range(1, student_count + 1):
+                sid = f"stu_{student_offset + index:03d}"
+                if await session.scalar(select(Student).where(Student.student_id == sid)) is None:
+                    session.add(Student(student_id=sid, name=f"{class_name}学生{index:02d}"))
+                if await session.scalar(
+                    select(ClassStudent).where(
+                        ClassStudent.class_id == class_id, ClassStudent.student_id == sid,
+                    )
+                ) is None:
+                    session.add(ClassStudent(class_id=class_id, student_id=sid))
         # 演示作业:hw_004 八年级数学周末作业(3 道题,对应 Figma 示例)
         hw = await session.scalar(select(Homework).where(Homework.homework_id == "hw_004"))
         if hw is None:

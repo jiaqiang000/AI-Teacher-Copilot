@@ -5,15 +5,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-
-from app.teacher_copilot.api.identity import get_student_id, get_teacher_id
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 
+from app.teacher_copilot.api.identity import get_student_id, get_teacher_id
+from app.teacher_copilot.api.response import ok
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.grading import Submission
 from app.teacher_copilot.db.models.homework import Homework, Question
-from app.teacher_copilot.api.response import fail, ok
+from app.teacher_copilot.db.models.org import ClassRoom
 from app.teacher_copilot.errors import TcError
 from app.teacher_copilot.services.homework_service import HomeworkService
 from app.teacher_copilot.services.permission_service import TeacherPermissionService
@@ -21,6 +21,53 @@ from app.teacher_copilot.services.question_bank_service import QuestionBankServi
 from app.teacher_copilot.services.question_service import QuestionService
 
 router = APIRouter(prefix="/api/teacher-copilot/homework")
+
+
+@router.get("")
+@router.get("/")
+async def list_homeworks(
+    class_id: str | None = None,
+    subject: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    teacher_id: str = Depends(get_teacher_id),
+):
+    """读取当前教师的作业摘要,按班级/学科可选过滤。"""
+    try:
+        async with TeacherPermissionService() as perm:
+            await perm.ensure_teacher(teacher_id)
+        async with HomeworkService() as svc:
+            homeworks = await svc.list_homeworks(
+                teacher_id,
+                class_id=class_id,
+                subject=subject,
+                limit=limit,
+            )
+        class_ids = {hw.class_id for hw in homeworks}
+        class_names: dict[str, str] = {}
+        if class_ids:
+            async with get_session() as session:
+                rows = await session.execute(
+                    select(ClassRoom.class_id, ClassRoom.name).where(
+                        ClassRoom.teacher_id == teacher_id,
+                        ClassRoom.class_id.in_(class_ids),
+                    )
+                )
+                class_names = {class_id: name for class_id, name in rows}
+        return ok([
+            {
+                "homework_id": hw.homework_id,
+                "name": hw.name,
+                "class_id": hw.class_id,
+                "class_name": class_names.get(hw.class_id, hw.class_id),
+                "subject": hw.subject,
+                "status": hw.status,
+                "deadline": hw.deadline,
+                "published_at": hw.published_at,
+            }
+            for hw in homeworks
+        ])
+    except TcError as e:
+        raise HTTPException(e.http_status, detail=dict(code=e.code, message=e.message))
 
 
 @router.post("")      # 无尾斜杠(经 next rewrites 规范化后的实际路径)

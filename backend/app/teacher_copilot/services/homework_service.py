@@ -12,7 +12,6 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 from app.teacher_copilot.db.models.homework import Homework, Question
 from app.teacher_copilot.errors import HomeworkNotFound, InvalidArgument
@@ -21,6 +20,31 @@ from app.teacher_copilot.repositories.mysql.base import BaseRepository, wrap_dat
 
 class HomeworkService(BaseRepository):
     """作业生命周期服务。"""
+
+    async def list_homeworks(
+        self,
+        teacher_id: str,
+        *,
+        class_id: str | None = None,
+        subject: str | None = None,
+        limit: int = 20,
+    ) -> list[Homework]:
+        """读取当前教师可见的作业摘要,供工作台和作业管理页复用。"""
+        try:
+            stmt = select(Homework).where(Homework.teacher_id == teacher_id)
+            if class_id:
+                stmt = stmt.where(Homework.class_id == class_id)
+            if subject:
+                stmt = stmt.where(Homework.subject == subject)
+            rows = await self.session.scalars(
+                stmt.order_by(
+                    Homework.published_at.desc().nullslast(),
+                    Homework.created_at.desc(),
+                ).limit(limit)
+            )
+            return list(rows)
+        except Exception as exc:  # pragma: no cover
+            raise wrap_data_error(exc) from exc
 
     async def create_homework(
         self, *, homework_id: str, name: str, class_id: str, teacher_id: str,

@@ -8,13 +8,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 
+from app.teacher_copilot.api.identity import get_teacher_id
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.grading import GradingResult
-from app.teacher_copilot.db.models.homework import Question
-from app.teacher_copilot.api.identity import get_teacher_id
-from app.teacher_copilot.errors import TcError
+from app.teacher_copilot.db.models.org import ClassRoom, ClassStudent, Student
+from app.teacher_copilot.errors import StudentNotFound, TcError
 from app.teacher_copilot.services.analysis_service import AnalysisCalculationV1
 from app.teacher_copilot.services.permission_service import TeacherPermissionService
 from app.teacher_copilot.services.profile_service import ProfileAlgorithmV1
@@ -22,18 +22,56 @@ from app.teacher_copilot.services.profile_service import ProfileAlgorithmV1
 router = APIRouter(prefix="/api/teacher-copilot")
 
 
+@router.get("/classes")
+async def teacher_classes(teacher_id: str = Depends(get_teacher_id)):
+    """读取当前教师的真实班级列表和成员数量。"""
+    try:
+        async with TeacherPermissionService() as perm:
+            await perm.ensure_teacher(teacher_id)
+        async with get_session() as session:
+            rows = await session.execute(
+                select(
+                    ClassRoom.class_id,
+                    ClassRoom.name,
+                    func.count(ClassStudent.student_id).label("student_count"),
+                )
+                .outerjoin(ClassStudent, ClassStudent.class_id == ClassRoom.class_id)
+                .where(ClassRoom.teacher_id == teacher_id)
+                .group_by(ClassRoom.class_id, ClassRoom.name)
+                .order_by(ClassRoom.class_id)
+            )
+            data = [
+                {
+                    "class_id": class_id,
+                    "name": name,
+                    "student_count": student_count,
+                }
+                for class_id, name, student_count in rows
+            ]
+        return {"success": True, "data": data}
+    except TcError as e:
+        raise HTTPException(e.http_status, detail=dict(code=e.code, message=e.message))
+
+
 @router.get("/profile/student/{student_id}")
 async def student_profile(
-    student_id: str, subject: str,
+    student_id: str, subject: str, class_id: str | None = None,
     teacher_id: str = Depends(get_teacher_id),
 ):
     """获取学生画像(StudentProfile)。"""
     try:
+        student, class_room = await _teacher_student_context(
+            teacher_id, student_id, class_id,
+        )
         async with TeacherPermissionService() as perm:
-            # student 校验(简化:确认教师存在即可,班级归属查询在真实实现中扩展)
             await perm.ensure_teacher(teacher_id)
         async with ProfileAlgorithmV1() as algo:
             profile = await algo.compute_student(student_id, subject)
+        profile["basic"].update({
+            "student_name": student.name,
+            "class_id": class_room.class_id,
+            "class_name": class_room.name,
+        })
         return {"success": True, "data": profile}
     except TcError as e:
         raise HTTPException(e.http_status, detail=dict(code=e.code, message=e.message))
@@ -47,9 +85,10 @@ async def class_profile(
     """获取班级画像(ClassProfile)。"""
     try:
         async with TeacherPermissionService() as perm:
-            await perm.ensure_teacher(teacher_id)
+            class_room = await perm.ensure_class_owned(teacher_id, class_id)
         async with ProfileAlgorithmV1() as algo:
             profile = await algo.compute_class(class_id, subject)
+        profile["basic"]["class_name"] = class_room.name
         return {"success": True, "data": profile}
     except TcError as e:
         raise HTTPException(e.http_status, detail=dict(code=e.code, message=e.message))
@@ -57,11 +96,12 @@ async def class_profile(
 
 @router.get("/profile/student/{student_id}/history")
 async def student_history(
-    student_id: str, subject: str, limit: int = 20,
+    student_id: str, subject: str, class_id: str | None = None, limit: int = 20,
     teacher_id: str = Depends(get_teacher_id),
 ):
     """学生批改历史(GradingResult[],用于证据下钻)。"""
     try:
+        await _teacher_student_context(teacher_id, student_id, class_id)
         async with TeacherPermissionService() as perm:
             await perm.ensure_teacher(teacher_id)
         async with get_session() as session:
@@ -87,6 +127,30 @@ async def student_history(
         return {"success": True, "data": history}
     except TcError as e:
         raise HTTPException(e.http_status, detail=dict(code=e.code, message=e.message))
+
+
+async def _teacher_student_context(
+    teacher_id: str, student_id: str, class_id: str | None,
+) -> tuple[Student, ClassRoom]:
+    """读取教师可见的学生及班级,无匹配时禁止用其他学生或班级兜底。"""
+    async with get_session() as session:
+        stmt = (
+            select(Student, ClassRoom)
+            .join(ClassStudent, ClassStudent.student_id == Student.student_id)
+            .join(ClassRoom, ClassRoom.class_id == ClassStudent.class_id)
+            .where(
+                Student.student_id == student_id,
+                ClassRoom.teacher_id == teacher_id,
+            )
+            .order_by(ClassRoom.class_id)
+            .limit(1)
+        )
+        if class_id:
+            stmt = stmt.where(ClassRoom.class_id == class_id)
+        row = (await session.execute(stmt)).first()
+    if row is None:
+        raise StudentNotFound(f"学生 {student_id} 不存在或不属于当前教师班级")
+    return row
 
 
 @router.get("/analysis/homework/{homework_id}")

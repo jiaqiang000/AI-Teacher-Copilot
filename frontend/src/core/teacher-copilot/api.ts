@@ -3,7 +3,13 @@
 
 import { fetch as apiFetch } from "@/core/api/fetcher"
 
-import type { GradingResult, HomeworkAnalysis, StudentProfile } from "./types"
+import type {
+  GradingResult,
+  HomeworkAnalysis,
+  HomeworkSummary,
+  StudentProfile,
+  TeacherClassSummary,
+} from "./types"
 
 // 同源相对路径:浏览器经 next.config rewrites(/api/teacher-copilot → Gateway)访问,
 // 自动携带登录 cookie;避免直连后端端口(跨域/无认证)问题。
@@ -24,13 +30,33 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (json.data ?? json) as T
 }
 
+// ---- 教师导航与摘要 (US1) ----
+export async function getTeacherClasses() {
+  return request<TeacherClassSummary[]>("/classes")
+}
+
+export async function getTeacherHomeworks(params?: {
+  classId?: string
+  subject?: string
+  limit?: number
+}) {
+  const qs = new URLSearchParams()
+  if (params?.classId) qs.set("class_id", params.classId)
+  if (params?.subject) qs.set("subject", params.subject)
+  if (params?.limit) qs.set("limit", String(params.limit))
+  const suffix = qs.toString() ? `?${qs.toString()}` : ""
+  return request<HomeworkSummary[]>(`/homework${suffix}`)
+}
+
 // ---- 作业与题目 (US1) ----
 export async function getHomework(homeworkId: string) {
   return request<{
     homework_id: string
     name: string
+    class_id: string
     subject: string
     status: string
+    published_at: string | null
     deadline: string | null
     questions: Array<{
       question_id: string
@@ -65,17 +91,24 @@ export async function addQuestion(
     difficulty?: string | null
   },
 ) {
-  return request<{ question_id: string; question_no: number; difficulty: string | null }>(
-    `/homework/${homeworkId}/questions`,
-    { method: "POST", body: JSON.stringify(body) },
-  )
+  return request<{
+    question_id: string
+    question_no: number
+    difficulty: string | null
+  }>(`/homework/${homeworkId}/questions`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
 }
 
 export async function publishHomework(homeworkId: string) {
-  return request<{ homework_id: string; status: string }>(`/homework/${homeworkId}/publish`, {
-    method: "POST",
-    body: JSON.stringify({}),
-  })
+  return request<{ homework_id: string; status: string }>(
+    `/homework/${homeworkId}/publish`,
+    {
+      method: "POST",
+      body: JSON.stringify({}),
+    },
+  )
 }
 
 // ---- 提交与批改 (US2) ----
@@ -115,7 +148,9 @@ export async function getHomeworkAnalysis(homeworkId: string, classId: string) {
 }
 
 export async function getQuestionAnalysis(
-  questionId: string, homeworkId: string, classId: string,
+  questionId: string,
+  homeworkId: string,
+  classId: string,
 ) {
   return request<object>(
     `/analysis/question/${questionId}?homework_id=${homeworkId}&class_id=${classId}`,
@@ -123,21 +158,38 @@ export async function getQuestionAnalysis(
 }
 
 // ---- 画像 (US4) ----
-export async function getStudentProfile(studentId: string, subject: string) {
+export async function getStudentProfile(
+  studentId: string,
+  subject: string,
+  classId?: string,
+) {
+  const qs = new URLSearchParams({ subject })
+  if (classId) qs.set("class_id", classId)
   return request<StudentProfile>(
-    `/profile/student/${studentId}?subject=${subject}`,
+    `/profile/student/${studentId}?${qs.toString()}`,
   )
 }
 
-export async function getStudentHistory(studentId: string, subject: string) {
+export async function getStudentHistory(
+  studentId: string,
+  subject: string,
+  classId?: string,
+) {
+  const qs = new URLSearchParams({ subject })
+  if (classId) qs.set("class_id", classId)
   return request<Array<Record<string, unknown>>>(
-    `/profile/student/${studentId}/history?subject=${subject}`,
+    `/profile/student/${studentId}/history?${qs.toString()}`,
   )
 }
 
 export async function getClassProfile(classId: string, subject: string) {
   return request<{
-    basic: { class_id: string; subject: string; algorithm_version: string }
+    basic: {
+      class_id: string
+      class_name?: string
+      subject: string
+      algorithm_version: string
+    }
     overview: {
       student_count: number
       active_student_count: number
@@ -145,9 +197,25 @@ export async function getClassProfile(classId: string, subject: string) {
       recent_score_rate: number | null
       trend: string | null
     }
-    weak_points: Array<{ knowledge_point_key: string; avg_mastery: number; weak_student_count: number; trend: string | null }>
-    common_errors: Array<{ error_code: string; knowledge_point_key: string; occurrence_count: number; affected_student_count: number }>
-    attention_students: Array<{ student_id: string; weak_point_count: number; recent_score_rate: number | null; trend: string | null; reason_codes: string[] }>
+    weak_points: Array<{
+      knowledge_point_key: string
+      avg_mastery: number
+      weak_student_count: number
+      trend: string | null
+    }>
+    common_errors: Array<{
+      error_code: string
+      knowledge_point_key: string
+      occurrence_count: number
+      affected_student_count: number
+    }>
+    attention_students: Array<{
+      student_id: string
+      weak_point_count: number
+      recent_score_rate: number | null
+      trend: string | null
+      reason_codes: string[]
+    }>
   }>(`/profile/class/${classId}?subject=${subject}`)
 }
 
@@ -173,18 +241,24 @@ export async function recognizeQuestionImage(imageUrl: string) {
 
 export async function searchQuestionBank(
   homeworkId: string,
-  params: { subject: string; difficulty?: string | null; knowledge_point?: string | null },
+  params: {
+    subject: string
+    difficulty?: string | null
+    knowledge_point?: string | null
+  },
 ) {
   const qs = new URLSearchParams({ subject: params.subject })
   if (params.difficulty) qs.set("difficulty", params.difficulty)
   if (params.knowledge_point) qs.set("knowledge_point", params.knowledge_point)
-  return request<Array<{
-    question_bank_item_id: string
-    content: string
-    difficulty: string | null
-    question_type: string
-    grade: string | null
-  }>>(`/homework/${homeworkId}/question-bank?${qs.toString()}`)
+  return request<
+    Array<{
+      question_bank_item_id: string
+      content: string
+      difficulty: string | null
+      question_type: string
+      grade: string | null
+    }>
+  >(`/homework/${homeworkId}/question-bank?${qs.toString()}`)
 }
 
 // ---- 学生侧(US2:我的作业详情,含我的提交状态) ----
@@ -216,6 +290,8 @@ export async function getStudentHomework(homeworkId: string) {
 }
 
 // ---- 业务角色(003:角色分流事实源) ----
-export async function getAccountRole(): Promise<{ role: "teacher" | "student" | "none" }> {
+export async function getAccountRole(): Promise<{
+  role: "teacher" | "student" | "none"
+}> {
   return request<{ role: "teacher" | "student" | "none" }>(`/account/role`)
 }

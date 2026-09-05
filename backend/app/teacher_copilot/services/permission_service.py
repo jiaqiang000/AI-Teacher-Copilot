@@ -30,8 +30,8 @@ class TeacherPermissionService(BaseRepository):
         if found is None:
             raise PermissionDenied(f"教师 {teacher_id} 不存在或无权限")
 
-    async def ensure_class_owned(self, teacher_id: str, class_id: str) -> None:
-        """校验班级归属当前教师。"""
+    async def ensure_class_owned(self, teacher_id: str, class_id: str) -> ClassRoom:
+        """校验班级归属当前教师并返回班级实体,供页面展示真实名称。"""
         try:
             found = await self.session.scalar(
                 select(ClassRoom).where(
@@ -43,6 +43,7 @@ class TeacherPermissionService(BaseRepository):
             raise wrap_data_error(exc) from exc
         if found is None:
             raise PermissionDenied(f"无权访问班级 {class_id}")
+        return found
 
     async def ensure_student_in_class(self, teacher_id: str, class_id: str, student_id: str) -> None:
         """校验学生属于当前教师的班级。"""

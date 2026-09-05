@@ -18,6 +18,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from app.teacher_copilot.db.models.grading import GradingResult, Submission
+from app.teacher_copilot.db.models.org import ClassRoom
+from app.teacher_copilot.errors import ClassNotFound
 from app.teacher_copilot.repositories.mysql.base import BaseRepository, wrap_data_error
 
 PERF_MAP = {"correct": 1.0, "partial": 0.5, "incorrect": 0.0}
@@ -239,11 +241,16 @@ class ProfileAlgorithmV1(BaseRepository):
         from app.teacher_copilot.db.models.org import ClassStudent
 
         try:
+            class_room = await self.session.scalar(
+                select(ClassRoom).where(ClassRoom.class_id == class_id)
+            )
             student_ids = list(await self.session.scalars(
                 select(ClassStudent.student_id).where(ClassStudent.class_id == class_id)
             ))
         except Exception as exc:  # pragma: no cover
             raise wrap_data_error(exc) from exc
+        if class_room is None:
+            raise ClassNotFound(f"班级 {class_id} 不存在")
 
         # 全班当前有效成功结果(按学生分组)
         all_results = [r for r in await self._valid_results() if r["subject"] == subject]
@@ -258,7 +265,7 @@ class ProfileAlgorithmV1(BaseRepository):
             for sid, results in by_student.items()
         }
 
-        overview = self._class_overview(student_ids, student_profiles, as_of)
+        overview = self._class_overview(student_ids, student_profiles, all_results, as_of)
         kp_stats = self._class_kp(student_profiles, as_of)
         weak = self._class_weak(kp_stats, student_profiles)
         common_errs = self._class_common_errors(by_student)
@@ -266,7 +273,7 @@ class ProfileAlgorithmV1(BaseRepository):
 
         return {
             "basic": {
-                "class_id": class_id, "subject": subject,
+                "class_id": class_id, "class_name": class_room.name, "subject": subject,
                 "generated_at": as_of.isoformat(), "source_data_until": as_of.isoformat(),
                 "algorithm_version": "profile_v1",
             },
@@ -286,19 +293,32 @@ class ProfileAlgorithmV1(BaseRepository):
         return {"overview": overview, "kp": kp_stats, "weak": weak, "recurring": recurring,
                 "attempt_count": len(results)}
 
-    def _class_overview(self, student_ids, profiles: dict, as_of) -> dict:
-        """班级整体:学生数、活跃数、平均得分率(先个人值再平均)。"""
+    def _class_overview(self, student_ids, profiles: dict, all_results: list[dict], as_of) -> dict:
+        """班级整体:学生数、得分率和趋势,均从当前班级事实计算。"""
         active = [sid for sid in student_ids if profiles[sid]["attempt_count"] > 0]
         rates = [profiles[sid]["overview"]["avg_score_rate"] for sid in active
                  if profiles[sid]["overview"]["avg_score_rate"] is not None]
         recent_rates = [profiles[sid]["overview"]["recent_score_rate"] for sid in active
                         if profiles[sid]["overview"]["recent_score_rate"] is not None]
+        class_student_ids = set(student_ids)
+        class_results = [
+            result for result in all_results
+            if result["student_id"] in class_student_ids
+        ]
+        recent_values = [
+            result["score_rate"] for result in class_results
+            if _in_window(result["created_at"], as_of, RECENT_DAYS)
+        ]
+        previous_values = [
+            result["score_rate"] for result in class_results
+            if _in_window(result["created_at"], as_of, RECENT_DAYS, 2 * RECENT_DAYS)
+        ]
         return {
             "student_count": len(student_ids),
             "active_student_count": len(active),
             "avg_score_rate": _rnd(sum(rates) / len(rates)) if rates else None,
             "recent_score_rate": _rnd(sum(recent_rates) / len(recent_rates)) if recent_rates else None,
-            "trend": None,  # 班级 trend 由各学生窗口均值再判断(参考文档 03 §4.1.10)
+            "trend": _trend(recent_values, previous_values),
         }
 
     def _class_kp(self, profiles: dict, as_of) -> list[dict]:
