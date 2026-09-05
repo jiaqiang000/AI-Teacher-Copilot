@@ -23,12 +23,10 @@ from app.teacher_copilot.tools.schemas.inputs import (
     GetStudentGradingHistoryInput,
     GetStudentProfileInput,
 )
-from deerflow.tools.types import Runtime
 
 
 @tool("get_student_profile", args_schema=GetStudentProfileInput)
 async def get_student_profile(
-    runtime: Runtime,
     student_id: str,
     subject: str,
     sections: list[str] | None = None,
@@ -39,7 +37,7 @@ async def get_student_profile(
     如需查询某道题、某次作业或具体历史错误记录,应使用 get_student_grading_history。
     """
     try:
-        teacher_id = await get_teacher_id_from_runtime(runtime)
+        teacher_id = await get_teacher_id_from_runtime(None)
         async with TeacherPermissionService() as permissions:
             await permissions.ensure_student_owned(teacher_id, student_id)
         async with ProfileAlgorithmV1() as algo:
@@ -51,7 +49,6 @@ async def get_student_profile(
 
 @tool("get_student_grading_history", args_schema=GetStudentGradingHistoryInput)
 async def get_student_grading_history(
-    runtime: Runtime,
     student_id: str,
     subject: str | None = None,
     knowledge_point_key: str | None = None,
@@ -63,7 +60,7 @@ async def get_student_grading_history(
 ) -> dict:
     """查询学生真实历史批改事实(含标准 key/code 与 raw 语义),为画像结论提供证据。"""
     try:
-        teacher_id = await get_teacher_id_from_runtime(runtime)
+        teacher_id = await get_teacher_id_from_runtime(None)
         async with TeacherPermissionService() as permissions:
             await permissions.ensure_student_owned(teacher_id, student_id)
         async with get_session() as session:
@@ -87,7 +84,6 @@ async def get_student_grading_history(
 
 @tool("get_class_profile", args_schema=GetClassProfileInput)
 async def get_class_profile(
-    runtime: Runtime,
     class_id: str,
     subject: str,
     sections: list[str] | None = None,
@@ -97,7 +93,7 @@ async def get_class_profile(
     用于回答班级长期学情,不枚举学生名单;需要班级成员列表时用 list_class_students。
     """
     try:
-        teacher_id = await get_teacher_id_from_runtime(runtime)
+        teacher_id = await get_teacher_id_from_runtime(None)
         async with TeacherPermissionService() as permissions:
             await permissions.ensure_class_owned(teacher_id, class_id)
         async with ProfileAlgorithmV1() as algo:

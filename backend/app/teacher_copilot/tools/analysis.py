@@ -17,12 +17,10 @@ from app.teacher_copilot.tools.schemas.inputs import (
     GetHomeworkAnalysisInput,
     GetQuestionAnalysisInput,
 )
-from deerflow.tools.types import Runtime
 
 
 @tool("get_homework_analysis", args_schema=GetHomeworkAnalysisInput)
 async def get_homework_analysis(
-    runtime: Runtime,
     homework_id: str,
     class_id: str,
     sections: list[str] | None = None,
@@ -33,7 +31,7 @@ async def get_homework_analysis(
     (那是 list_class_homeworks)。
     """
     try:
-        teacher_id = await get_teacher_id_from_runtime(runtime)
+        teacher_id = await get_teacher_id_from_runtime(None)
         async with TeacherPermissionService() as permissions:
             await permissions.ensure_class_owned(teacher_id, class_id)
             homework = await permissions.ensure_homework_owned(teacher_id, homework_id)
@@ -50,7 +48,6 @@ async def get_homework_analysis(
 
 @tool("get_question_analysis", args_schema=GetQuestionAnalysisInput)
 async def get_question_analysis(
-    runtime: Runtime,
     homework_id: str,
     class_id: str,
     question_id: str,
@@ -61,7 +58,7 @@ async def get_question_analysis(
     (get_homework_analysis)再下钻。
     """
     try:
-        teacher_id = await get_teacher_id_from_runtime(runtime)
+        teacher_id = await get_teacher_id_from_runtime(None)
         async with TeacherPermissionService() as permissions:
             await permissions.ensure_class_owned(teacher_id, class_id)
             homework = await permissions.ensure_homework_owned(teacher_id, homework_id)

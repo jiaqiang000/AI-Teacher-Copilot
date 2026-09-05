@@ -21,11 +21,10 @@ from app.teacher_copilot.tools.schemas.inputs import (
     ListClassHomeworksInput,
     ListClassStudentsInput,
 )
-from deerflow.tools.types import Runtime
 
 
 @tool("list_classes", args_schema=ListClassesInput)
-async def list_classes(runtime: Runtime, keyword: str = "") -> dict:
+async def list_classes(keyword: str = "") -> dict:
     """按名称关键字查询真实班级列表(谁的名字带这个关键字)。
 
     教师提到"八三班/三班/某班"等名称时,先调用本工具把班名解析为 class_id,
@@ -33,7 +32,7 @@ async def list_classes(runtime: Runtime, keyword: str = "") -> dict:
     返回为空表示关键字无匹配,此时应请教师确认班级名称。
     """
     try:
-        teacher_id = await get_teacher_id_from_runtime(runtime)
+        teacher_id = await get_teacher_id_from_runtime(None)
         async with get_session() as session:
             stmt = (
                 select(ClassRoom.class_id, ClassRoom.name)
@@ -49,14 +48,14 @@ async def list_classes(runtime: Runtime, keyword: str = "") -> dict:
 
 
 @tool("list_class_students", args_schema=ListClassStudentsInput)
-async def list_class_students(runtime: Runtime, class_id: str) -> dict:
+async def list_class_students(class_id: str) -> dict:
     """查询指定班级的真实学生成员列表(谁在这个班级里)。
 
     用于全班批量诊断/练习等需要 student_id 集合的任务;不计算学生成绩或掌握度,
     需要长期学情时用 get_class_profile。
     """
     try:
-        teacher_id = await get_teacher_id_from_runtime(runtime)
+        teacher_id = await get_teacher_id_from_runtime(None)
         async with TeacherPermissionService() as permissions:
             await permissions.ensure_class_owned(teacher_id, class_id)
         async with get_session() as session:
@@ -73,7 +72,6 @@ async def list_class_students(runtime: Runtime, class_id: str) -> dict:
 
 @tool("list_class_homeworks", args_schema=ListClassHomeworksInput)
 async def list_class_homeworks(
-    runtime: Runtime,
     class_id: str,
     subject: str | None = None,
     start_time: str | None = None,
@@ -86,7 +84,7 @@ async def list_class_homeworks(
     需要某份作业表现时用 get_homework_analysis。
     """
     try:
-        teacher_id = await get_teacher_id_from_runtime(runtime)
+        teacher_id = await get_teacher_id_from_runtime(None)
         async with TeacherPermissionService() as permissions:
             await permissions.ensure_class_owned(teacher_id, class_id)
         async with get_session() as session:
