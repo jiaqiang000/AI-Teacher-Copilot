@@ -4,14 +4,15 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { WorkspaceHeader } from "@/components/workspace/workspace-container";
+import { useI18n } from "@/core/i18n/hooks";
 import { getTeacherHomeworks } from "@/core/teacher-copilot/api";
-
-const STATUS_LABEL: Record<string, string> = {
-  DRAFT: "草稿",
-  PUBLISHED: "已发布",
-};
+import {
+  statusLabel,
+  subjectLabel,
+} from "@/core/teacher-copilot/display-labels";
 
 export default function HomeworksPage() {
+  const { t } = useI18n();
   const [homeworks, setHomeworks] = useState<
     Awaited<ReturnType<typeof getTeacherHomeworks>>
   >([]);
@@ -66,8 +67,9 @@ export default function HomeworksPage() {
                   <div>
                     <h2 className="font-semibold">{homework.name}</h2>
                     <p className="text-muted-foreground mt-1 text-sm">
-                      {homework.class_name} · {homework.subject} ·{" "}
-                      {STATUS_LABEL[homework.status] ?? homework.status}
+                      {homework.class_name} ·{" "}
+                      {subjectLabel(homework.subject, t.teacherCopilot)} ·{" "}
+                      {statusLabel(homework.status, t.teacherCopilot)}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 text-sm">

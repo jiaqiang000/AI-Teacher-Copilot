@@ -6,22 +6,25 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { WorkspaceHeader } from "@/components/workspace/workspace-container";
+import { useI18n } from "@/core/i18n/hooks";
 import {
   getClassProfile,
   getHomeworkAnalysis,
   getTeacherClasses,
   getTeacherHomeworks,
 } from "@/core/teacher-copilot/api";
+import {
+  knowledgePointLabel,
+  statusLabel,
+  subjectLabel,
+  trendLabel,
+  type TeacherCopilotLabels,
+} from "@/core/teacher-copilot/display-labels";
 
 const SUBJECT = "math";
 
-const TREND_LABEL: Record<string, string> = {
-  improving: "改善",
-  declining: "下降",
-  stable: "稳定",
-};
-
 export default function DashboardPage() {
+  const { t } = useI18n();
   const searchParams = useSearchParams();
   const deniedToastShown = useRef(false);
   const [classes, setClasses] = useState<
@@ -40,10 +43,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (
-      searchParams.get("denied") === "student" &&
-      !deniedToastShown.current
-    ) {
+    if (searchParams.get("denied") === "student" && !deniedToastShown.current) {
       deniedToastShown.current = true;
       toast.warning("无权限", {
         description: "这是学生功能页面,请使用学生账号访问。",
@@ -191,6 +191,7 @@ export default function DashboardPage() {
                       name={classSummary.name}
                       count={`${classSummary.student_count} 名学生`}
                       profile={profiles[classSummary.class_id]}
+                      labels={t.teacherCopilot}
                     />
                   ))
                 )}
@@ -219,6 +220,7 @@ export default function DashboardPage() {
                             ? completionRate
                             : null
                         }
+                        labels={t.teacherCopilot}
                       />
                     ))
                 )}
@@ -254,23 +256,29 @@ function ClassCard({
   name,
   count,
   profile,
+  labels,
 }: {
   classId: string;
   name: string;
   count: string;
   profile?: Awaited<ReturnType<typeof getClassProfile>>;
+  labels: TeacherCopilotLabels;
 }) {
   const trend = profile?.overview.trend;
-  const weak = profile?.weak_points[0]?.knowledge_point_key.split(".").pop();
+  const weak = profile?.weak_points[0]
+    ? knowledgePointLabel(profile.weak_points[0].knowledge_point_name, labels)
+    : null;
   return (
     <Link
       href={`/workspace/teacher-copilot/classes/${classId}`}
       className="mb-2 block rounded-lg border p-4 transition hover:shadow-sm"
     >
       <div className="font-medium">{name}</div>
-      <div className="text-muted-foreground text-xs">{count} · 数学</div>
+      <div className="text-muted-foreground text-xs">
+        {count} · {subjectLabel("math", labels)}
+      </div>
       <div className="mt-1 text-sm">
-        {trend ? (TREND_LABEL[trend] ?? trend) : "暂无趋势"}
+        {trend ? trendLabel(trend, labels) : labels.unknownTrend}
         {profile?.overview.avg_score_rate != null
           ? ` · 平均 ${Math.round(profile.overview.avg_score_rate * 100)}%`
           : ""}
@@ -283,9 +291,11 @@ function ClassCard({
 function HomeworkCard({
   homework,
   completion,
+  labels,
 }: {
   homework: Awaited<ReturnType<typeof getTeacherHomeworks>>[number];
   completion: number | null;
+  labels: TeacherCopilotLabels;
 }) {
   return (
     <Link
@@ -297,7 +307,7 @@ function HomeworkCard({
         {completion != null
           ? `完成 ${Math.round(completion * 100)}%`
           : "暂无数据"}
-        {` · ${homework.class_name} · ${homework.status}`}
+        {` · ${homework.class_name} · ${statusLabel(homework.status, labels)}`}
       </div>
     </Link>
   );

@@ -82,6 +82,69 @@ export const enUS: Translations = {
     blog: "Blog",
   },
 
+  teacherCopilot: {
+    subjects: { math: "Math", english: "English" },
+    statuses: {
+      DRAFT: "Draft",
+      PUBLISHED: "Published",
+      PENDING: "Waiting for grading",
+      RUNNING: "Grading",
+      SUCCEEDED: "Grading complete",
+      FAILED: "Grading failed",
+    },
+    stages: {
+      UPLOAD: "Image uploaded",
+      QUEUED: "Waiting to process",
+      OCR: "Recognizing with OCR",
+      PARSING: "Parsing answer",
+      GRADING: "Grading",
+      ASSEMBLING: "Preparing grading result",
+      ASSEMBLING_RESULT: "Preparing grading result",
+      COMPLETED: "Grading complete",
+      FAILED: "Processing failed",
+    },
+    questionTypes: {
+      calculation: "Calculation",
+      solution: "Solution",
+      essay: "Essay",
+    },
+    difficulties: { easy: "Easy", medium: "Medium", hard: "Hard" },
+    trends: {
+      improving: "Improving",
+      declining: "Declining",
+      stable: "Stable",
+    },
+    stepStatuses: {
+      correct: "Correct",
+      partial: "Partially correct",
+      incorrect: "Incorrect",
+      consequential_error: "Consequential error",
+    },
+    reasons: {
+      LOW_RECENT_SCORE: "Low recent score",
+      DECLINING_TREND: "Declining trend",
+      MULTIPLE_WEAK_POINTS: "Multiple weak points",
+      RECURRING_ERROR: "Recurring error",
+      LOW_HOMEWORK_SCORE: "Low homework score",
+      HIGH_ERROR_QUESTION: "High error rate question",
+    },
+    unknownSubject: "Unknown subject",
+    unknownStatus: "Unknown status",
+    unknownStage: "Unknown stage",
+    unknownQuestionType: "Unknown question type",
+    unknownDifficulty: "Unknown difficulty",
+    unknownTrend: "Unknown trend",
+    unknownStepStatus: "Unknown result",
+    unknownReason: "Unknown attention reason",
+    unknownKnowledgePoint: "Unclassified knowledge point",
+    unknownErrorType: "Unknown error type",
+    algorithmVersion: "Profile algorithm V1",
+    performanceWeighting: "Weighted by performance",
+    currentGradingResult: "Showing only the current grading result",
+    averagePerformance: "Average performance",
+    questionAnalysis: "Question analysis",
+  },
+
   // Welcome
   welcome: {
     greeting: "Hello, again!",
@@ -162,6 +225,8 @@ export const enUS: Translations = {
   // Input Box
   inputBox: {
     placeholder: "How can I assist you today?",
+    send: "Send",
+    stop: "Stop generation",
     disclaimer: "AI 生成内容仅供参考,重要结论请以人工复核为准。",
     createSkillPrompt:
       "We're going to build a new skill step by step with `skill-creator`. To start, what do you want this skill to do?",

@@ -68,6 +68,33 @@ export interface Translations {
     blog: string;
   };
 
+  // Teacher Copilot 业务展示标签
+  teacherCopilot: {
+    subjects: Record<string, string>;
+    statuses: Record<string, string>;
+    stages: Record<string, string>;
+    questionTypes: Record<string, string>;
+    difficulties: Record<string, string>;
+    trends: Record<string, string>;
+    stepStatuses: Record<string, string>;
+    reasons: Record<string, string>;
+    unknownSubject: string;
+    unknownStatus: string;
+    unknownStage: string;
+    unknownQuestionType: string;
+    unknownDifficulty: string;
+    unknownTrend: string;
+    unknownStepStatus: string;
+    unknownReason: string;
+    unknownKnowledgePoint: string;
+    unknownErrorType: string;
+    algorithmVersion: string;
+    performanceWeighting: string;
+    currentGradingResult: string;
+    averagePerformance: string;
+    questionAnalysis: string;
+  };
+
   // Welcome
   welcome: {
     greeting: string;
@@ -138,6 +165,8 @@ export interface Translations {
   // Input Box
   inputBox: {
     placeholder: string;
+    send: string;
+    stop: string;
     disclaimer: string;
     createSkillPrompt: string;
     addAttachments: string;

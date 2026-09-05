@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { WorkspaceHeader } from "@/components/workspace/workspace-container";
+import { useI18n } from "@/core/i18n/hooks";
 import {
   addQuestion,
   createHomework,
@@ -16,6 +17,12 @@ import {
   searchQuestionBank,
   uploadImage,
 } from "@/core/teacher-copilot/api";
+import {
+  difficultyLabel,
+  questionTypeLabel,
+  statusLabel,
+  subjectLabel,
+} from "@/core/teacher-copilot/display-labels";
 
 type QuestionDraft = {
   question_id?: string;
@@ -26,6 +33,7 @@ type QuestionDraft = {
 };
 
 export default function AuthoringPage() {
+  const { t } = useI18n();
   const { homeworkId: routeHomeworkId } = useParams<{ homeworkId: string }>();
   const isNewHomework = routeHomeworkId === "new";
   const [homeworkId, setHomeworkId] = useState<string | null>(
@@ -173,8 +181,11 @@ export default function AuthoringPage() {
               {isNewHomework ? "创建作业" : name || "编辑作业"}
             </h1>
             <p className="text-muted-foreground text-sm">
-              {homeworkId ? "DRAFT" : "未创建草稿"} ·{" "}
-              {selectedClass?.name ?? "请选择班级"} · {subject}
+              {homeworkId
+                ? statusLabel("DRAFT", t.teacherCopilot)
+                : "未创建草稿"}{" "}
+              · {selectedClass?.name ?? "请选择班级"} ·{" "}
+              {subjectLabel(subject, t.teacherCopilot)}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -271,8 +282,12 @@ export default function AuthoringPage() {
             </div>
             <div className="flex items-center gap-3 text-sm">
               <select value={qtype} onChange={(e) => setQtype(e.target.value)}>
-                <option value="calculation">calculation</option>
-                <option value="solution">solution</option>
+                <option value="calculation">
+                  {questionTypeLabel("calculation", t.teacherCopilot)}
+                </option>
+                <option value="solution">
+                  {questionTypeLabel("solution", t.teacherCopilot)}
+                </option>
               </select>
               <label>
                 满分{" "}
@@ -289,9 +304,15 @@ export default function AuthoringPage() {
                   value={difficulty}
                   onChange={(e) => setDifficulty(e.target.value)}
                 >
-                  <option value="easy">easy</option>
-                  <option value="medium">medium</option>
-                  <option value="hard">hard</option>
+                  <option value="easy">
+                    {difficultyLabel("easy", t.teacherCopilot)}
+                  </option>
+                  <option value="medium">
+                    {difficultyLabel("medium", t.teacherCopilot)}
+                  </option>
+                  <option value="hard">
+                    {difficultyLabel("hard", t.teacherCopilot)}
+                  </option>
                 </select>
               </label>
               <button
@@ -314,7 +335,8 @@ export default function AuthoringPage() {
                 className="block w-full rounded border px-3 py-2 text-left text-sm hover:bg-gray-50"
                 onClick={() => setContent(it.content)}
               >
-                [{it.difficulty ?? "?"}] {it.content.slice(0, 60)}
+                [{difficultyLabel(it.difficulty, t.teacherCopilot)}]{" "}
+                {it.content.slice(0, 60)}
                 {it.content.length > 60 ? "..." : ""}
               </button>
             ))}
@@ -332,7 +354,9 @@ export default function AuthoringPage() {
                 className="mb-2 flex justify-between rounded border px-3 py-2 text-sm"
               >
                 <span>
-                  第 {i + 1} 题 · {q.question_type} · {q.difficulty} ·{" "}
+                  第 {i + 1} 题 ·{" "}
+                  {questionTypeLabel(q.question_type, t.teacherCopilot)} ·{" "}
+                  {difficultyLabel(q.difficulty, t.teacherCopilot)} ·{" "}
                   {q.max_score}分
                 </span>
                 <span className="text-muted-foreground">

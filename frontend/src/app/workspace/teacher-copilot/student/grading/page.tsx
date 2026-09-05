@@ -4,6 +4,7 @@
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { useI18n } from "@/core/i18n/hooks";
 import {
   getGradingResult,
   getStudentHomework,
@@ -11,17 +12,18 @@ import {
   submitAnswer,
   uploadImage,
 } from "@/core/teacher-copilot/api";
+import {
+  difficultyLabel,
+  stageLabel,
+  statusLabel,
+  stepStatusLabel,
+} from "@/core/teacher-copilot/display-labels";
 import type { GradingResult } from "@/core/teacher-copilot/types";
 
-const STAGES = [
-  { key: "UPLOAD", label: "图片上传完成" },
-  { key: "OCR", label: "OCR 识别完成" },
-  { key: "PARSING", label: "作答解析完成" },
-  { key: "GRADING", label: "正在批改" },
-  { key: "ASSEMBLING", label: "正在生成批改结果" },
-];
+const STAGE_KEYS = ["UPLOAD", "OCR", "PARSING", "GRADING", "ASSEMBLING"];
 
 export default function StudentGradingPage() {
+  const { t } = useI18n();
   const params = useSearchParams();
   const homeworkId = params.get("homework_id") ?? "";
   const questionId = params.get("question_id") ?? "";
@@ -129,15 +131,17 @@ export default function StudentGradingPage() {
 
   const stageIndex =
     status === "SUCCEEDED"
-      ? STAGES.length
-      : STAGES.findIndex((s) => s.key === stage);
+      ? STAGE_KEYS.length
+      : STAGE_KEYS.findIndex((key) => key === stage);
 
   return (
     <div className="max-w-3xl space-y-5 p-4 sm:p-8">
       <header>
         <h1 className="text-2xl font-bold">
           第 {question?.question_no ?? "-"} 题
-          {question?.difficulty ? ` · ${question.difficulty}` : ""}
+          {question?.difficulty
+            ? ` · ${difficultyLabel(question.difficulty, t.teacherCopilot)}`
+            : ""}
         </h1>
         <p className="text-muted-foreground text-sm">
           上传一张图片 = 一道题 · 由 AI Teacher 批改
@@ -193,16 +197,17 @@ export default function StudentGradingPage() {
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold">AI Teacher · 正在批改</h2>
                 <span className="text-muted-foreground text-xs">
-                  status: {status} · stage: {stage}
+                  状态：{statusLabel(status, t.teacherCopilot)} · 阶段：
+                  {stageLabel(stage, t.teacherCopilot)}
                 </span>
               </div>
               <ul className="mt-3 space-y-1 text-sm">
-                {STAGES.map((s, i) => (
-                  <li key={s.key} className="flex items-center gap-2">
+                {STAGE_KEYS.map((key, i) => (
+                  <li key={key} className="flex items-center gap-2">
                     <span className="w-4">
                       {i < stageIndex ? "✓" : i === stageIndex ? "●" : "○"}
                     </span>
-                    {s.label}
+                    {stageLabel(key, t.teacherCopilot)}
                   </li>
                 ))}
               </ul>
@@ -219,7 +224,7 @@ export default function StudentGradingPage() {
               批改结果{result ? "" : "(完成后展示)"}
             </h2>
             {result ? (
-              <ResultView result={result} />
+              <ResultView result={result} labels={t.teacherCopilot} />
             ) : (
               <p className="text-muted-foreground text-sm">
                 批改完成后展示结果(数学步骤分与错误定位)
@@ -234,7 +239,13 @@ export default function StudentGradingPage() {
   );
 }
 
-function ResultView({ result }: { result: GradingResult }) {
+function ResultView({
+  result,
+  labels,
+}: {
+  result: GradingResult;
+  labels: ReturnType<typeof useI18n>["t"]["teacherCopilot"];
+}) {
   return (
     <div>
       <div className="text-3xl font-bold">
@@ -253,7 +264,8 @@ function ResultView({ result }: { result: GradingResult }) {
             >
               <span>{s.description}</span>
               <span className="text-muted-foreground">
-                {s.status} · {s.earned_score}/{s.max_score}
+                {stepStatusLabel(s.status, labels)} · {s.earned_score}/
+                {s.max_score}
               </span>
             </li>
           ))}

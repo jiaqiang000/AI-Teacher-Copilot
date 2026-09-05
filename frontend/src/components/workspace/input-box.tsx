@@ -2706,6 +2706,9 @@ export function InputBox({
               </ModelSelectorContent>
             </ModelSelector>
             <PromptInputSubmit
+              aria-label={
+                status === "streaming" ? t.inputBox.stop : t.inputBox.send
+              }
               className="rounded-full"
               disabled={composerLocked}
               variant="outline"

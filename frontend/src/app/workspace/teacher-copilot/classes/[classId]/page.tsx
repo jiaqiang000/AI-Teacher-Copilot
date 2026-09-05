@@ -5,17 +5,21 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { WorkspaceHeader } from "@/components/workspace/workspace-container";
+import { useI18n } from "@/core/i18n/hooks";
 import { getClassProfile } from "@/core/teacher-copilot/api";
+import {
+  algorithmVersionLabel,
+  errorTypeLabel,
+  knowledgePointLabel,
+  reasonLabels,
+  subjectLabel,
+  trendLabel,
+} from "@/core/teacher-copilot/display-labels";
 
 const SUBJECT = process.env.NEXT_PUBLIC_TC_SUBJECT ?? "math";
 
-const TREND_LABEL: Record<string, string> = {
-  improving: "改善",
-  declining: "下降",
-  stable: "稳定",
-};
-
 export default function ClassDetailPage() {
+  const { t } = useI18n();
   const { classId } = useParams<{ classId: string }>();
   const [profile, setProfile] = useState<Awaited<
     ReturnType<typeof getClassProfile>
@@ -40,8 +44,12 @@ export default function ClassDetailPage() {
   const overview = profile?.overview;
   const className = profile?.basic?.class_name ?? classId;
   const trend = overview?.trend
-    ? (TREND_LABEL[overview.trend] ?? overview.trend)
+    ? trendLabel(overview.trend, t.teacherCopilot)
     : "—";
+  const displaySubject = subjectLabel(
+    profile?.basic?.subject ?? SUBJECT,
+    t.teacherCopilot,
+  );
 
   return (
     <div className="min-h-full w-full">
@@ -49,7 +57,7 @@ export default function ClassDetailPage() {
       <main className="space-y-6 p-4 sm:p-8">
         <header>
           <h1 className="text-2xl font-bold">
-            {className} · {SUBJECT}
+            {className} · {displaySubject}
           </h1>
           {profile && (
             <p className="text-muted-foreground">
@@ -99,7 +107,10 @@ export default function ClassDetailPage() {
               <section>
                 <h2 className="mb-2 text-lg font-semibold">长期薄弱知识点</h2>
                 <p className="text-muted-foreground mb-2 text-xs">
-                  ProfileAlgorithmV1
+                  {algorithmVersionLabel(
+                    profile.basic.algorithm_version,
+                    t.teacherCopilot,
+                  )}
                 </p>
                 {weak.length === 0 ? (
                   <p className="text-muted-foreground text-sm">
@@ -112,7 +123,10 @@ export default function ClassDetailPage() {
                       className="mb-2 rounded border px-3 py-2"
                     >
                       <span className="text-sm">
-                        {w.knowledge_point_key.split(".").pop()}
+                        {knowledgePointLabel(
+                          w.knowledge_point_name,
+                          t.teacherCopilot,
+                        )}
                       </span>
                       <span className="text-muted-foreground ml-2 text-xs">
                         掌握度{" "}
@@ -136,7 +150,12 @@ export default function ClassDetailPage() {
                       key={`${e.error_code}-${e.knowledge_point_key}`}
                       className="mb-2 rounded border px-3 py-2 text-sm"
                     >
-                      {e.error_code} · {e.affected_student_count} 人
+                      {errorTypeLabel(e.error_name, t.teacherCopilot)} ·{" "}
+                      {e.affected_student_count} 人 ·{" "}
+                      {knowledgePointLabel(
+                        e.knowledge_point_name,
+                        t.teacherCopilot,
+                      )}
                     </div>
                   ))
                 )}
@@ -164,7 +183,10 @@ export default function ClassDetailPage() {
                         {student.student_id}
                       </Link>
                       <span className="text-muted-foreground ml-3">
-                        {student.reason_codes.join(" / ")}
+                        {reasonLabels(
+                          student.reason_codes,
+                          t.teacherCopilot,
+                        ).join(" / ")}
                       </span>
                     </li>
                   ))}

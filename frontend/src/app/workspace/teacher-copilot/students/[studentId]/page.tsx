@@ -4,20 +4,24 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { WorkspaceHeader } from "@/components/workspace/workspace-container";
+import { useI18n } from "@/core/i18n/hooks";
 import {
   getStudentHistory,
   getStudentProfile,
 } from "@/core/teacher-copilot/api";
+import {
+  algorithmVersionLabel,
+  difficultyLabel,
+  errorTypeLabel,
+  knowledgePointLabel,
+  subjectLabel,
+  trendLabel,
+} from "@/core/teacher-copilot/display-labels";
 
 const SUBJECT = process.env.NEXT_PUBLIC_TC_SUBJECT ?? "math";
 
-const TREND_LABEL: Record<string, string> = {
-  improving: "改善",
-  declining: "下降",
-  stable: "稳定",
-};
-
 export default function StudentProfilePage() {
+  const { t } = useI18n();
   const { studentId } = useParams<{ studentId: string }>();
   const searchParams = useSearchParams();
   const classId = searchParams.get("class_id") ?? undefined;
@@ -48,8 +52,12 @@ export default function StudentProfilePage() {
   const recurring = profile?.recurring_errors ?? [];
   const basic = profile?.basic;
   const trend = overview?.trend
-    ? (TREND_LABEL[overview.trend] ?? overview.trend)
+    ? trendLabel(overview.trend, t.teacherCopilot)
     : "—";
+  const displaySubject = subjectLabel(
+    basic?.subject ?? SUBJECT,
+    t.teacherCopilot,
+  );
 
   return (
     <div className="min-h-full w-full">
@@ -61,8 +69,8 @@ export default function StudentProfilePage() {
           </h1>
           {basic && (
             <p className="text-muted-foreground">
-              {basic.class_name ?? basic.class_id ?? "—"} · {SUBJECT} ·{" "}
-              {basic.algorithm_version}
+              {basic.class_name ?? basic.class_id ?? "—"} · {displaySubject} ·{" "}
+              {algorithmVersionLabel(basic.algorithm_version, t.teacherCopilot)}
             </p>
           )}
         </header>
@@ -108,7 +116,7 @@ export default function StudentProfilePage() {
               <section>
                 <h2 className="mb-2 text-lg font-semibold">知识点掌握</h2>
                 <p className="text-muted-foreground mb-2 text-xs">
-                  基于 performance 加权
+                  {t.teacherCopilot.performanceWeighting}
                 </p>
                 {(profile.knowledge_points ?? []).length === 0 ? (
                   <p className="text-muted-foreground text-sm">
@@ -120,7 +128,12 @@ export default function StudentProfilePage() {
                       key={kp.knowledge_point_key}
                       className="mb-2 rounded border px-3 py-2 text-sm"
                     >
-                      <span>{kp.knowledge_point_key.split(".").pop()}</span>
+                      <span>
+                        {knowledgePointLabel(
+                          kp.knowledge_point_name,
+                          t.teacherCopilot,
+                        )}
+                      </span>
                       <span className="text-muted-foreground ml-2">
                         {kp.mastery != null
                           ? `${Math.round(kp.mastery * 100)}%`
@@ -146,9 +159,14 @@ export default function StudentProfilePage() {
                       key={`${item.error_code}-${item.knowledge_point_key}`}
                       className="mb-2 rounded border px-3 py-2 text-sm"
                     >
-                      {item.error_code} ×{item.recent_occurrence_count}
+                      {errorTypeLabel(item.error_name, t.teacherCopilot)} ×
+                      {item.recent_occurrence_count}
                       <span className="text-muted-foreground ml-2">
-                        关联 {item.knowledge_point_key.split(".").pop()}
+                        关联{" "}
+                        {knowledgePointLabel(
+                          item.knowledge_point_name,
+                          t.teacherCopilot,
+                        )}
                       </span>
                     </div>
                   ))
@@ -159,7 +177,7 @@ export default function StudentProfilePage() {
             <section>
               <h2 className="mb-2 text-lg font-semibold">最近批改记录</h2>
               <p className="text-muted-foreground mb-2 text-xs">
-                只展示当前有效 GradingResult
+                {t.teacherCopilot.currentGradingResult}
               </p>
               {history.length === 0 ? (
                 <p className="text-muted-foreground text-sm">暂无历史记录</p>
@@ -170,9 +188,12 @@ export default function StudentProfilePage() {
                       key={String(item.grading_result_id)}
                       className="rounded border px-3 py-2"
                     >
-                      {typeof item.difficulty === "string"
-                        ? item.difficulty
-                        : "-"}{" "}
+                      {difficultyLabel(
+                        typeof item.difficulty === "string"
+                          ? item.difficulty
+                          : null,
+                        t.teacherCopilot,
+                      )}{" "}
                       · {historyRate(item.score)}%
                     </li>
                   ))}

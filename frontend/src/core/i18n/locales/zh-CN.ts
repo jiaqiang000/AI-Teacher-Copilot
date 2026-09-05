@@ -81,6 +81,65 @@ export const zhCN: Translations = {
     blog: "博客",
   },
 
+  teacherCopilot: {
+    subjects: { math: "数学", english: "英语" },
+    statuses: {
+      DRAFT: "草稿",
+      PUBLISHED: "已发布",
+      PENDING: "等待批改",
+      RUNNING: "批改中",
+      SUCCEEDED: "批改完成",
+      FAILED: "批改失败",
+    },
+    stages: {
+      UPLOAD: "图片上传完成",
+      QUEUED: "等待处理",
+      OCR: "OCR 识别中",
+      PARSING: "作答解析中",
+      GRADING: "正在批改",
+      ASSEMBLING: "正在生成批改结果",
+      ASSEMBLING_RESULT: "正在生成批改结果",
+      COMPLETED: "批改完成",
+      FAILED: "处理失败",
+    },
+    questionTypes: {
+      calculation: "计算题",
+      solution: "解答题",
+      essay: "作文题",
+    },
+    difficulties: { easy: "简单", medium: "中等", hard: "困难" },
+    trends: { improving: "改善", declining: "下降", stable: "稳定" },
+    stepStatuses: {
+      correct: "正确",
+      partial: "部分正确",
+      incorrect: "错误",
+      consequential_error: "后续错误",
+    },
+    reasons: {
+      LOW_RECENT_SCORE: "近期得分偏低",
+      DECLINING_TREND: "近期趋势下降",
+      MULTIPLE_WEAK_POINTS: "多个知识点薄弱",
+      RECURRING_ERROR: "存在重复错误",
+      LOW_HOMEWORK_SCORE: "本次作业得分偏低",
+      HIGH_ERROR_QUESTION: "高错误率题目",
+    },
+    unknownSubject: "未知学科",
+    unknownStatus: "未知状态",
+    unknownStage: "未知阶段",
+    unknownQuestionType: "未知题型",
+    unknownDifficulty: "未知难度",
+    unknownTrend: "未知趋势",
+    unknownStepStatus: "未知结果",
+    unknownReason: "未知关注原因",
+    unknownKnowledgePoint: "未分类知识点",
+    unknownErrorType: "未知错误类型",
+    algorithmVersion: "画像算法版本 V1",
+    performanceWeighting: "按表现加权",
+    currentGradingResult: "只展示当前有效批改结果",
+    averagePerformance: "平均表现",
+    questionAnalysis: "题目分析",
+  },
+
   // Welcome
   welcome: {
     greeting: "你好，欢迎回来！",
@@ -158,6 +217,8 @@ export const zhCN: Translations = {
   // Input Box
   inputBox: {
     placeholder: "今天我能为你做些什么？",
+    send: "发送",
+    stop: "停止生成",
     disclaimer: "内容由AI生成，重要信息请务必核查",
     createSkillPrompt:
       "我们一起用 skill-creator 技能来创建一个技能吧。先问问我希望这个技能能做什么。",

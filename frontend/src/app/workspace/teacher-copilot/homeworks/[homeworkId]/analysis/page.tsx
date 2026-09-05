@@ -5,17 +5,25 @@ import { useParams, useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
 
 import { WorkspaceHeader } from "@/components/workspace/workspace-container"
+import { useI18n } from "@/core/i18n/hooks"
 import {
   getHomework,
   getHomeworkAnalysis,
   getQuestionAnalysis,
 } from "@/core/teacher-copilot/api"
+import {
+  errorTypeLabel,
+  knowledgePointLabel,
+  subjectLabel,
+  type TeacherCopilotLabels,
+} from "@/core/teacher-copilot/display-labels"
 
 type Homework = Awaited<ReturnType<typeof getHomework>>
 type Analysis = Awaited<ReturnType<typeof getHomeworkAnalysis>>
 type QuestionDetail = Awaited<ReturnType<typeof getQuestionAnalysis>>
 
 export default function AnalysisPage() {
+  const { t } = useI18n()
   const { homeworkId } = useParams<{ homeworkId: string }>()
   const searchParams = useSearchParams()
   const requestedClassId = searchParams.get("class_id") ?? ""
@@ -100,7 +108,7 @@ export default function AnalysisPage() {
                 : `${homework?.name ?? homeworkId} · 作业分析`}
             </h1>
             <p className="text-muted-foreground text-sm">
-              {homework?.class_id ?? resolvedClassId} · {homework?.subject ?? "math"}
+              {homework?.class_id ?? resolvedClassId} · {subjectLabel(homework?.subject ?? "math", t.teacherCopilot)}
             </p>
           </div>
           <Link href="/workspace/teacher-copilot/homeworks" className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50">
@@ -121,6 +129,7 @@ export default function AnalysisPage() {
               selectedQuestion={selectedQuestion}
               error={questionError}
               backHref={backHref}
+              labels={t.teacherCopilot}
             />
           ) : (
             <AnalysisOverview
@@ -128,6 +137,7 @@ export default function AnalysisPage() {
               highestErrorQuestion={highestErrorQuestion}
               homeworkId={homeworkId}
               classId={resolvedClassId}
+              labels={t.teacherCopilot}
             />
           )
         )}
@@ -141,11 +151,13 @@ function AnalysisOverview({
   highestErrorQuestion,
   homeworkId,
   classId,
+  labels,
 }: {
   data: Analysis
   highestErrorQuestion: Analysis["questions"][number] | undefined
   homeworkId: string
   classId: string
+  labels: TeacherCopilotLabels
 }) {
   const completion = data.completion
   const perf = data.performance
@@ -195,7 +207,7 @@ function AnalysisOverview({
           ) : (
             data.knowledge_points.slice(0, 3).map((knowledgePoint) => (
               <div key={knowledgePoint.knowledge_point_key} className="mb-2 rounded border px-3 py-2 text-sm">
-                {knowledgePoint.knowledge_point_key.split(".").pop()} · avg {knowledgePoint.avg_performance != null ? Math.round(knowledgePoint.avg_performance * 100) : "—"}%
+                {knowledgePointLabel(knowledgePoint.knowledge_point_name, labels)} · {labels.averagePerformance} {knowledgePoint.avg_performance != null ? Math.round(knowledgePoint.avg_performance * 100) : "—"}%
               </div>
             ))
           )}
@@ -204,7 +216,7 @@ function AnalysisOverview({
 
       <section>
         <h2 className="mb-2 text-lg font-semibold">题目表现</h2>
-        <p className="text-muted-foreground mb-2 text-xs">点击有有效作答的题目进入 Question Analysis</p>
+        <p className="text-muted-foreground mb-2 text-xs">点击有有效作答的题目进入{labels.questionAnalysis}</p>
         {data.questions.length === 0 ? (
           <p className="text-muted-foreground text-sm">暂无题目</p>
         ) : (
@@ -215,7 +227,7 @@ function AnalysisOverview({
                   <span>第 {question.question_no} 题</span>
                   <span className="text-muted-foreground">
                     {question.attempt_count > 0
-                      ? `错误率 ${question.error_rate != null ? `${Math.round(question.error_rate * 100)}%` : "—"}${question.common_errors[0] ? ` · ${question.common_errors[0].error_code}` : ""}`
+                      ? `错误率 ${question.error_rate != null ? `${Math.round(question.error_rate * 100)}%` : "—"}${question.common_errors[0] ? ` · ${errorTypeLabel(question.common_errors[0].error_name, labels)}` : ""}`
                       : "暂无有效作答"}
                   </span>
                 </>
@@ -247,11 +259,13 @@ function QuestionDetailView({
   selectedQuestion,
   error,
   backHref,
+  labels,
 }: {
   detail: QuestionDetail | null
   selectedQuestion: Analysis["questions"][number] | undefined
   error: string
   backHref: string
+  labels: TeacherCopilotLabels
 }) {
   if (error) {
     return (
@@ -290,7 +304,7 @@ function QuestionDetailView({
           <ul className="space-y-2 text-sm">
             {detail.common_errors.map((item) => (
               <li key={`${item.error_code}-${item.knowledge_point_key}`} className="rounded border px-3 py-2">
-                {item.error_code} · {item.affected_student_count} 人 · {item.knowledge_point_key.split(".").pop()}
+                {errorTypeLabel(item.error_name, labels)} · {item.affected_student_count} 人 · {knowledgePointLabel(item.knowledge_point_name, labels)}
               </li>
             ))}
           </ul>
