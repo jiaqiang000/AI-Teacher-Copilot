@@ -73,7 +73,8 @@ export default function StudentHomeworkPage() {
       <section className="space-y-3">
         {questions.map((q) => {
           const status = q.my_submission?.status
-          const meta = (status && STATUS_META[status]) || { label: "待提交", cls: "bg-gray-50 text-gray-500" }
+          // 空状态或未知状态统一回退，确保后续始终读取标签对象。
+          const meta = STATUS_META[status ?? ""] ?? { label: "待提交", cls: "bg-gray-50 text-gray-500" }
           const href = `/workspace/teacher-copilot/student/grading?homework_id=${HW_ID}&question_id=${q.question_id}`
           return (
             <div key={q.question_id} className="rounded-lg border p-4 flex justify-between items-center">

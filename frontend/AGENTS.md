@@ -17,6 +17,8 @@ DeerFlow Frontend is a Next.js 16 web interface for an AI agent system. It commu
 
 ## Commands
 
+学生作业状态标签使用 `STATUS_META[status ?? ""] ?? 默认标签`；不要将 `status && ...` 与 `??` 直接组合，否则空字符串会进入标签对象的联合类型并阻断构建。
+
 智能作业批改登录页遵循 Figma `76:3`：邮箱密码在上，教师/学生演示在下。演示按钮仅发送 role/remember_me，不填充表单、不写 localStorage；成功整页进入 `/workspace` 重新读取会话并按角色分流，不沿用 next。`/welcome` 兼容跳转 `/login`。测试：`tests/e2e-auth/demo-login.spec.ts`；可用 `PLAYWRIGHT_CHANNEL=chrome` 复用本机 Chrome。
 
 | Command          | Purpose                                                             |
