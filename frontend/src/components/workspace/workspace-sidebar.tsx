@@ -28,10 +28,8 @@ export function WorkspaceSidebar({
         <SidebarContent>
           {/* 003 US-B:教师教学业务导航(品牌 logo + 工作台/班级/作业/Copilot 对话) */}
           <TeacherNav />
-          {/* 复用 DeerFlow 原有历史列表，仅展示教师 Copilot 对话，避免混入其他 Agent。 */}
-          {isSidebarOpen && (
-            <RecentChatList metadata={{ agent_name: "teacher-copilot" }} />
-          )}
+          {/* 复用 DeerFlow 原有历史列表，后端按当前登录用户隔离，不额外丢弃历史线程。 */}
+          {isSidebarOpen && <RecentChatList />}
         </SidebarContent>
         <SidebarFooter>
           <WorkspaceNavMenu />
