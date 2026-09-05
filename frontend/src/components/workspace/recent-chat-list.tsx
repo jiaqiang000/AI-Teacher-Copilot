@@ -70,7 +70,12 @@ import { isIMEComposing } from "@/lib/ime";
 import { ThreadChannelIcon } from "./thread-channel-source";
 import { VirtualThreadList } from "./thread-list-virtualizer";
 
-export function RecentChatList() {
+type RecentChatListProps = {
+  /** 可选的线程元数据精确筛选条件，供业务侧复用 DeerFlow 历史列表。 */
+  metadata?: Record<string, unknown>;
+};
+
+export function RecentChatList({ metadata }: RecentChatListProps = {}) {
   const { t } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
@@ -79,12 +84,21 @@ export function RecentChatList() {
       thread_id: string;
       agent_name?: string;
     }>();
+  const threadSearchParams = useMemo(
+    () => ({
+      sortBy: "updated_at" as const,
+      sortOrder: "desc" as const,
+      select: ["thread_id", "updated_at", "values", "metadata"],
+      ...(metadata ? { metadata } : {}),
+    }),
+    [metadata],
+  );
   const {
     data: infiniteThreads,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useInfiniteThreads();
+  } = useInfiniteThreads(threadSearchParams);
   const threadListModel = useMemo(
     () => buildThreadListModel(infiniteThreads?.pages ?? []),
     [infiniteThreads?.pages],

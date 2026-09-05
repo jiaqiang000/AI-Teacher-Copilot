@@ -7,8 +7,10 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
+import { RecentChatList } from "./recent-chat-list";
 import { WorkspaceNavMenu } from "./workspace-nav-menu";
 // 003:原生 DeerFlow 导航(New chat/Chats/Agents/Channels/Recent chats)在 UI 中隐藏,
 // 组件文件保留(URL 直连原生能力仍可用)。
@@ -16,6 +18,8 @@ import { WorkspaceNavMenu } from "./workspace-nav-menu";
 export function WorkspaceSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
+  const { open: isSidebarOpen } = useSidebar();
+
   return (
     <>
       <Sidebar variant="sidebar" collapsible="icon" {...props}>
@@ -24,6 +28,10 @@ export function WorkspaceSidebar({
         <SidebarContent>
           {/* 003 US-B:教师教学业务导航(品牌 logo + 工作台/班级/作业/Copilot 对话) */}
           <TeacherNav />
+          {/* 复用 DeerFlow 原有历史列表，仅展示教师 Copilot 对话，避免混入其他 Agent。 */}
+          {isSidebarOpen && (
+            <RecentChatList metadata={{ agent_name: "teacher-copilot" }} />
+          )}
         </SidebarContent>
         <SidebarFooter>
           <WorkspaceNavMenu />
