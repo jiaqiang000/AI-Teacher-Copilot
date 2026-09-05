@@ -23,10 +23,12 @@ from app.teacher_copilot.db.models.homework import Homework
 from app.teacher_copilot.db.models.org import ClassRoom, ClassStudent
 from app.teacher_copilot.db.seed.demo import seed_demo
 from app.teacher_copilot.db.seed.seed_v2 import seed_diverse_data, seed_rich_data
-from app.teacher_copilot.errors import ClassNotFound
+from app.teacher_copilot.errors import ClassNotFound, InvalidArgument, QuestionNotFound
 from app.teacher_copilot.services.analysis_service import AnalysisCalculationV1
 from app.teacher_copilot.services.homework_service import HomeworkService
 from app.teacher_copilot.services.profile_service import ProfileAlgorithmV1
+from app.teacher_copilot.services.question_service import QuestionService
+from app.teacher_copilot.services.submission_service import SubmissionService
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -158,6 +160,72 @@ async def test_invalid_class_does_not_fall_back_to_class_03(seeded_database):
     with pytest.raises(ClassNotFound):
         async with ProfileAlgorithmV1() as algorithm:
             await algorithm.compute_class("class_missing", "math")
+
+
+@pytest.mark.asyncio
+async def test_submission_rejects_question_homework_mismatch_without_resetting(seeded_database):
+    """题目和作业必须是同一条关系,非法请求不能创建或重置提交。"""
+    async with HomeworkService() as service:
+        valid_homework = await service.create_homework(
+            homework_id="hw_test_submission",
+            name="提交关系校验作业",
+            class_id="class_03",
+            teacher_id="teacher_01",
+            subject="math",
+        )
+        other_homework = await service.create_homework(
+            homework_id="hw_test_submission_other",
+            name="提交关系校验另一份作业",
+            class_id="class_03",
+            teacher_id="teacher_01",
+            subject="math",
+        )
+    async with QuestionService() as service:
+        valid_question = await service.create_question(
+            question_id="q_test_submission",
+            homework_id=valid_homework.homework_id,
+            subject="math",
+            question_type="calculation",
+            content="计算 1 + 1",
+            max_score=10,
+            difficulty="easy",
+        )
+        other_question = await service.create_question(
+            question_id="q_test_submission_other",
+            homework_id=other_homework.homework_id,
+            subject="math",
+            question_type="calculation",
+            content="计算 2 + 2",
+            max_score=10,
+            difficulty="easy",
+        )
+
+    async with SubmissionService() as service:
+        submission, created = await service.submit(
+            student_id="stu_003",
+            question_id=valid_question.question_id,
+            homework_id=valid_homework.homework_id,
+            image_url="https://example.com/valid.png",
+        )
+        with pytest.raises(InvalidArgument):
+            await service.submit(
+                student_id="stu_003",
+                question_id=other_question.question_id,
+                homework_id=valid_homework.homework_id,
+                image_url="https://example.com/wrong.png",
+            )
+        with pytest.raises(QuestionNotFound):
+            await service.submit(
+                student_id="stu_003",
+                question_id="q_missing_submission",
+                homework_id=valid_homework.homework_id,
+                image_url="https://example.com/missing.png",
+            )
+        unchanged = await service.get(submission.submission_id)
+
+    assert created is True
+    assert unchanged.image_url == "https://example.com/valid.png"
+    assert unchanged.status == "PENDING"
 
 
 @pytest.mark.asyncio

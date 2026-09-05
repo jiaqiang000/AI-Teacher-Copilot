@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils"
 
 const STUDENT_ITEMS = [
   { href: "/workspace/teacher-copilot/student/homework", label: "我的作业", icon: ListChecks },
-  { href: "/workspace/teacher-copilot/student/grading?homework_id=hw_004&question_id=q_hw_004_1", label: "批改结果", icon: FileCheck2 },
+  { href: "/workspace/teacher-copilot/student/grading?homework_id=hw_004&question_id=q001", label: "批改结果", icon: FileCheck2 },
 ]
 
 export function StudentShell({ ...props }: React.ComponentProps<typeof Sidebar>) {

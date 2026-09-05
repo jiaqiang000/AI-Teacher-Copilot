@@ -158,3 +158,91 @@ test.describe("教师巡检缺口：对象与入口", () => {
     await expect(page.getByText("八三班 · 数学")).toHaveCount(0);
   });
 });
+
+test.describe("学生巡检缺口：题目对象一致性", () => {
+  test("有效 q001 使用真实题干并保留作答入口", async ({ page }) => {
+    await page.route(
+      "**/api/teacher-copilot/homework/hw_004/for-student",
+      (route) =>
+        route.fulfill({
+          json: {
+            success: true,
+            data: {
+              homework: {
+                homework_id: "hw_004",
+                name: "八年级数学周末作业",
+                subject: "math",
+                status: "PUBLISHED",
+                deadline: null,
+                published_at: "2026-09-05T10:00:00",
+              },
+              questions: [
+                {
+                  question_id: "q001",
+                  question_no: 1,
+                  question_type: "calculation",
+                  content: "解方程 2x + 4 = 8",
+                  max_score: 10,
+                  difficulty: "easy",
+                  my_submission: null,
+                },
+              ],
+            },
+          },
+        }),
+    );
+
+    await page.goto(
+      "/workspace/teacher-copilot/student/grading?homework_id=hw_004&question_id=q001",
+    );
+    await expect(page.getByRole("heading", { name: "第 1 题" })).toBeVisible();
+    await expect(page.getByText("解方程 2x + 4 = 8")).toBeVisible();
+    await expect(page.locator('input[type="file"]')).toHaveCount(1);
+  });
+
+  test("无效 question_id 显示错误且不回退或提交", async ({ page }) => {
+    let submissionRequests = 0;
+    await page.route(
+      "**/api/teacher-copilot/homework/hw_004/for-student",
+      (route) =>
+        route.fulfill({
+          json: {
+            success: true,
+            data: {
+              homework: {
+                homework_id: "hw_004",
+                name: "八年级数学周末作业",
+                subject: "math",
+                status: "PUBLISHED",
+                deadline: null,
+                published_at: "2026-09-05T10:00:00",
+              },
+              questions: [
+                {
+                  question_id: "q001",
+                  question_no: 1,
+                  question_type: "calculation",
+                  content: "解方程 2x + 4 = 8",
+                  max_score: 10,
+                  difficulty: "easy",
+                  my_submission: null,
+                },
+              ],
+            },
+          },
+        }),
+    );
+    await page.route("**/api/teacher-copilot/submissions**", (route) => {
+      if (route.request().method() === "POST") submissionRequests += 1;
+      return route.continue();
+    });
+
+    await page.goto(
+      "/workspace/teacher-copilot/student/grading?homework_id=hw_004&question_id=q999",
+    );
+    await expect(page.getByText(/题目不存在|题目与作业不匹配/)).toBeVisible();
+    await expect(page.locator('input[type="file"]')).toHaveCount(0);
+    expect(submissionRequests).toBe(0);
+    await expect(page.getByText("解方程 2x + 4 = 8")).toHaveCount(0);
+  });
+});

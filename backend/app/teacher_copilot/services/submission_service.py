@@ -20,7 +20,13 @@ from app.teacher_copilot.db.models.grading import (
     OcrResult,
     Submission,
 )
-from app.teacher_copilot.errors import GradingInProgress, SubmissionNotFound
+from app.teacher_copilot.db.models.homework import Question
+from app.teacher_copilot.errors import (
+    GradingInProgress,
+    InvalidArgument,
+    QuestionNotFound,
+    SubmissionNotFound,
+)
 from app.teacher_copilot.repositories.mysql.base import BaseRepository, wrap_data_error
 
 
@@ -41,6 +47,16 @@ class SubmissionService(BaseRepository):
         已存在且 SUCCEEDED/FAILED → 复用并重置(清除旧 OCRResult/GradingResult)。
         """
         try:
+            question = await self.session.scalar(
+                select(Question).where(Question.question_id == question_id)
+            )
+            if question is None:
+                raise QuestionNotFound(f"题目 {question_id} 不存在")
+            if question.homework_id != homework_id:
+                raise InvalidArgument(
+                    f"题目 {question_id} 不属于作业 {homework_id}",
+                    code="QUESTION_HOMEWORK_MISMATCH",
+                )
             existing = await self.session.scalar(
                 select(Submission).where(
                     Submission.student_id == student_id,
@@ -75,7 +91,7 @@ class SubmissionService(BaseRepository):
             existing.submitted_at = datetime.utcnow()
             await self.session.commit()
             return existing, False
-        except GradingInProgress:
+        except (GradingInProgress, InvalidArgument, QuestionNotFound):
             raise
         except Exception as exc:  # pragma: no cover
             raise wrap_data_error(exc) from exc
