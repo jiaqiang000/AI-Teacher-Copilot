@@ -1,5 +1,7 @@
 ### Gateway API (`app/gateway/`)
 
+Teacher Copilot 演示登录由 `POST /api/v1/auth/login/demo` 处理：只允许 teacher/student，固定账号定义与 seed 共享。签发会话前必须验证非管理员、无需初始化、AccountLink 精确匹配预置业务 ID；不可用返回 503，禁止在登录请求内建号或重置密码。该路由与普通登录一样是精确公开路径，免首次双提交令牌但仍检查 Origin。回归测试：`tests/test_demo_login.py`。
+
 FastAPI listens on port 8001; health: `GET /health`. Set `GATEWAY_ENABLE_DOCS=false` to disable the default `/docs`, `/redoc`, and `/openapi.json` endpoints.
 
 Durable MCP notifications use internal Agent runs. Keep their trusted delivery instruction outside the user-input boundary, and frame serialized remote events as untrusted before model invocation. Strict thread existence/ownership admission dead-letters events whose task outlives its deleted chat instead of recreating the thread.

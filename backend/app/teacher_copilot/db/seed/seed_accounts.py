@@ -18,11 +18,7 @@ import sqlite3
 import uuid
 from pathlib import Path
 
-# 预置账号(email / 密码 / 角色 / 业务类型 / 业务 ID / 说明)
-ACCOUNTS = [
-    ("teacher@demo.com", "teacher123456", "user", "teacher", "teacher_01", "教师:王老师(演示账号)"),
-    ("student@demo.com", "student123456", "user", "student", "stu_003", "学生:张三(演示账号)"),
-]
+from app.teacher_copilot.demo_accounts import ACCOUNTS
 
 
 def _locate_db() -> Path:
