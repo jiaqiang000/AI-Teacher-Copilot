@@ -1,6 +1,6 @@
-# DeerFlow Helm Chart
+# AI Teacher Copilot Helm Chart
 
-Deploys the full DeerFlow stack to Kubernetes: **gateway** (backend + embedded
+Deploys the AI Teacher Copilot stack to Kubernetes: **gateway** (backend + embedded
 LangGraph runtime), **frontend** (Next.js), **nginx** (internal reverse proxy
 preserving the compose routing), and the **provisioner** (K8s-native sandbox
 that spawns code-execution Pods on demand).
@@ -12,7 +12,7 @@ Kubernetes resources. No existing repo files are modified.
 
 - A Kubernetes cluster (Docker Desktop K8s, OrbStack, kind, k3d, or a real cluster).
 - `kubectl` + `helm` 3.8+ installed (OCI registry support stabilized in 3.8; earlier 3.x needs `HELM_EXPERIMENTAL_OCI=1`).
-- The three DeerFlow images — either the published ones (see "Install the
+- The three project images — either the published ones (see "Install the
   published chart" below) or built locally (see step 1).
 - An Ingress controller (e.g. ingress-nginx) if you enable `ingress`.
 
@@ -252,11 +252,10 @@ kubectl -n deer-flow exec deploy/deer-flow-provisioner -- curl -s localhost:8002
   stream* path cross-pod-safe. The default is still 1 replica: **do not raise
   `gateway.replicas` past 1 yet.** Run control — `create_or_reject` dedup,
   `cancel`, and orphan reconciliation — is still worker-local (in-process
-  `asyncio.Lock` + in-memory `record.task`), tracked by [issue
-  #3948](https://github.com/bytedance/deer-flow/issues/3948). With >1 replica a
-  double-submit can create two runs on one thread (checkpoint corruption), a
-  cancel can land on a non-owner pod (409), and a crashed pod's runs stay
-  `pending`/`running` forever. Stay on 1 replica until that work lands.
+  `asyncio.Lock` + in-memory `record.task`). With >1 replica a double-submit
+  can create two runs on one thread (checkpoint corruption), a cancel can land
+  on a non-owner pod (409), and a crashed pod's runs stay `pending`/`running`
+  forever. Stay on 1 replica until that work lands.
 - **Scheduled task recovery.** If a deployment explicitly enables
   `scheduler.multi_instance: true`, it must use shared Postgres,
   `run_ownership.heartbeat_enabled: true`, and `run_events.backend: db`.

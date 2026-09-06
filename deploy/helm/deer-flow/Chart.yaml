@@ -1,15 +1,14 @@
 apiVersion: v2
 name: deer-flow
-description: DeerFlow — LangGraph-based AI super-agent (gateway + frontend + nginx + sandbox provisioner) deployed to Kubernetes.
+description: AI Teacher Copilot — 智能作业批改系统部署到 Kubernetes 的网关、前端、反向代理和沙箱组件。
 type: application
 version: 2.1.0
 appVersion: "2.1.0"
 keywords:
-  - deerflow
+  - ai-teacher-copilot
+  - homework-grading
+  - education
   - langgraph
-  - ai-agent
-  - llm
-home: https://github.com/bytedance/deer-flow
-icon: https://raw.githubusercontent.com/bytedance/deer-flow/main/frontend/public/images/deer.svg
+home: https://github.com/jiaqiang000/AI-Teacher-Copilot
 maintainers:
-  - name: DeerFlow
+  - name: AI Teacher Copilot

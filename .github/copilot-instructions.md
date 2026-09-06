@@ -1,10 +1,10 @@
-# Copilot Onboarding Instructions for DeerFlow
+# Copilot Onboarding Instructions for AI Teacher Copilot
 
 Use this file as the default operating guide for this repository. Follow it first, and only search the codebase when this file is incomplete or incorrect.
 
 ## 1) Repository Summary
 
-DeerFlow is a full-stack "super agent harness".
+AI Teacher Copilot is a full-stack intelligent homework grading application built on the DeerFlow runtime.
 
 - Backend: Python 3.12, LangGraph + FastAPI gateway, sandbox/tool system, memory, MCP integration.
 - Frontend: Next.js 16 + React 19 + TypeScript + pnpm.

@@ -1,4 +1,4 @@
-# DeerFlow docker image cache
+# 项目 Docker 镜像缓存
 docker/.cache/
 # oh-my-claudecode state
 .omc/

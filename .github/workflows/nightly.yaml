@@ -1,6 +1,6 @@
 name: Nightly Build
 
-# Nightly build of the three DeerFlow container images (backend, frontend,
+# Nightly build of the three project container images (backend, frontend,
 # provisioner) and the Helm chart, published to GHCR from the default branch.
 #
 # This mirrors the tag-driven release workflows (container.yaml + chart.yaml)
@@ -18,10 +18,9 @@ name: Nightly Build
 # (patched in-workflow, never committed), so installing it pulls the matching
 # nightly images with no values overrides.
 #
-# Restricted to the upstream repo: every job is gated on
-# `github.repository == 'bytedance/deer-flow'`, so a scheduled run or manual
-# dispatch on a fork skips all jobs rather than pushing to the fork's own GHCR
-# namespace. Scheduled workflows also only fire on the default branch.
+# Restricted to the project repository so scheduled builds publish only to the
+# intended GHCR namespace. Scheduled workflows also only fire on the default
+# branch.
 
 on:
   schedule:
@@ -38,7 +37,7 @@ env:
 
 jobs:
   prepare:
-    if: github.repository == 'bytedance/deer-flow'
+    if: github.repository == 'jiaqiang000/AI-Teacher-Copilot'
     runs-on: ubuntu-latest
     outputs:
       date: ${{ steps.date.outputs.date }}
@@ -75,7 +74,7 @@ jobs:
           echo "Nightly version: ${NIGHTLY}"
 
   validate-chart:
-    if: github.repository == 'bytedance/deer-flow'
+    if: github.repository == 'jiaqiang000/AI-Teacher-Copilot'
     # Catch a broken render or a stale config_version before publish. A broken
     # chart published under an OCI version is immutable (GHCR won't let you
     # overwrite --version), so a regression must fail here, not on install.
@@ -99,7 +98,7 @@ jobs:
 
   build-images:
     needs: prepare
-    if: github.repository == 'bytedance/deer-flow'
+    if: github.repository == 'jiaqiang000/AI-Teacher-Copilot'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -176,7 +175,7 @@ jobs:
     # failed image build withholds the chart rather than publishing one that
     # would fail to pull in-cluster.
     needs: [prepare, validate-chart, build-images]
-    if: github.repository == 'bytedance/deer-flow'
+    if: github.repository == 'jiaqiang000/AI-Teacher-Copilot'
     runs-on: ubuntu-latest
     permissions:
       contents: read

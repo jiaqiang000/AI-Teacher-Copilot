@@ -1,6 +1,6 @@
-# Contributing to DeerFlow
+# Contributing to AI Teacher Copilot
 
-Thank you for your interest in contributing to DeerFlow! This guide will help you set up your development environment and understand our development workflow.
+Thank you for your interest in contributing to AI Teacher Copilot! This guide will help you set up your development environment and understand our development workflow.
 
 ## Development Environment Setup
 
@@ -113,11 +113,11 @@ Use these as practical starting points for development and review environments:
 
 | Scenario | Starting point | Recommended | Notes |
 |---------|-----------|------------|-------|
-| `make dev` on one machine | 4 vCPU, 8 GB RAM | 8 vCPU, 16 GB RAM | Best when DeerFlow uses hosted model APIs. |
+| `make dev` on one machine | 4 vCPU, 8 GB RAM | 8 vCPU, 16 GB RAM | Best when AI Teacher Copilot uses hosted model APIs. |
 | `make docker-start` review environment | 4 vCPU, 8 GB RAM | 8 vCPU, 16 GB RAM | Docker image builds and sandbox containers need extra headroom. |
 | Shared Linux test server | 8 vCPU, 16 GB RAM | 16 vCPU, 32 GB RAM | Prefer this for heavier multi-agent runs or multiple reviewers. |
 
-`2 vCPU / 4 GB` environments often fail to start reliably or become unresponsive under normal DeerFlow workloads.
+`2 vCPU / 4 GB` environments often fail to start reliably or become unresponsive under normal AI Teacher Copilot workloads.
 
 #### Linux: Docker daemon permission denied
 
@@ -145,7 +145,7 @@ Recommended fix: add your current user to the `docker` group so Docker commands 
    ```bash
    docker ps
    ```
-5. Retry the DeerFlow command:
+5. Retry the AI Teacher Copilot command:
    ```bash
    make docker-stop
    make docker-start
@@ -319,7 +319,7 @@ Nginx (port 2026) ← Unified entry point
 
 ## AI assistance disclosure
 
-DeerFlow is an AI project and we welcome AI-assisted contributions. To help
+AI Teacher Copilot is an AI project and we welcome AI-assisted contributions. To help
 reviewers calibrate how closely to read a change, **every pull request must
 complete the "AI assistance" section of the
 [PR template](.github/pull_request_template.md)**:
@@ -342,7 +342,7 @@ make test
 # Strict blocking-I/O tests
 make test-blocking-io
 
-# Live DeerFlowClient integration tests (explicit opt-in)
+# Live AI Teacher Copilot integration tests (explicit opt-in)
 # Requires a valid root config.yaml and API credentials.
 make test-live
 
@@ -414,10 +414,10 @@ the generated zip before attaching it to a public issue.
 
 ## Need Help?
 
-- Check existing [Issues](https://github.com/bytedance/deer-flow/issues)
+- Check existing [Issues](https://github.com/jiaqiang000/AI-Teacher-Copilot/issues)
 - Read the [Documentation](backend/docs/)
-- Ask questions in [Discussions](https://github.com/bytedance/deer-flow/discussions)
+- Ask questions in [Discussions](https://github.com/jiaqiang000/AI-Teacher-Copilot/discussions)
 
 ## License
 
-By contributing to DeerFlow, you agree that your contributions will be licensed under the [MIT License](./LICENSE).
+By contributing to AI Teacher Copilot, you agree that your contributions will be licensed under the [MIT License](./LICENSE).

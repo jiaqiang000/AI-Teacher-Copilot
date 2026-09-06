@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 智能作业批改系统(Teacher Copilot,V2)本地 production 一键部署(进程式,非 Docker)
 #
-# 用法(在 deer-flow/ 根目录执行):
+# 用法(在项目根目录执行):
 #   ./scripts/deploy-local.sh              # 启动后端(uvicorn :8001)+ 前端(next start :3000)
 #   ./scripts/deploy-local.sh --seed       # 初始化双角色账号（班级作业数据使用现有数据库）
 #   ./scripts/deploy-local.sh --rebuild    # 强制重建前端生产包

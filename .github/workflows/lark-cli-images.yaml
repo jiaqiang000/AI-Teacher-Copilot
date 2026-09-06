@@ -20,8 +20,8 @@ env:
 
 jobs:
   build-images:
-    # Only publish from the upstream repo; a fork dispatch/tag skips the job.
-    if: github.repository == 'bytedance/deer-flow'
+    # Only publish from the project repository; unrelated forks skip the job.
+    if: github.repository == 'jiaqiang000/AI-Teacher-Copilot'
     runs-on: ubuntu-latest
     permissions:
       contents: read

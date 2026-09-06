@@ -63,7 +63,7 @@ Fixes #
 
 ## AI assistance
 
-<!-- DeerFlow is an AI project — most PRs here use AI coding tools, and that's
+<!-- AI Teacher Copilot is an AI project — most PRs here use AI coding tools, and that's
      welcome. Disclosing it just helps reviewers calibrate how closely to read the
      diff. Please fill all three; don't delete the section. -->
 
@@ -73,4 +73,3 @@ Fixes #
      "AI wrote tests, I wrote the impl". A prompt or conversation link is great too. -->
 
 - [ ] I've read and understand every line of this change and take responsibility for it — it's not unreviewed AI output.
-
