@@ -21,7 +21,10 @@ from app.teacher_copilot.services.submission_service import SubmissionService
 router = APIRouter(prefix="/api/teacher-copilot/submissions")
 
 
+# Next.js 重写会去掉请求路径末尾的斜杠；同时注册无斜杠别名，避免 POST
+# 被 307 重定向后改成 OPTIONS 预检请求，导致已登录提交被 401 拦截。
 @router.post("/")
+@router.post("", include_in_schema=False)
 async def submit(
     body: dict,
     student_id: str = Depends(get_student_id),
