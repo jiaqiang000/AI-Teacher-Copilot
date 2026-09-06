@@ -4,7 +4,7 @@
 
 面向中学教师的智能作业批改与学情分析系统。教师可以创建和发布作业，学生上传单题作答图片，系统完成真实 OCR（光学字符识别）、数学步骤批改或英语作文评分，并将结果沉淀为可查询的学生与班级学情数据。
 
-> 本项目的业务能力由 AI Teacher Copilot 实现，底层 Agent（智能体）运行时复用 DeerFlow 2.0 的开源能力。仓库保留底层运行时包、环境变量兼容和原项目许可证，以保证后续复用与升级。
+> 本项目基于成熟的开源 Agent（智能体）运行时能力构建，保留稳定的对话、工具、技能、记忆、沙箱、线程和流式执行机制，以支持后续维护与升级。
 
 ## 核心能力
 
@@ -63,13 +63,12 @@ make dev
 ## 代码结构
 
 ```text
-backend/app/teacher_copilot/       作业、提交、批改、画像、分析和业务工具
-backend/packages/harness/deerflow/ DeerFlow Agent 运行时与基础能力
+backend/                           作业、提交、批改、画像、分析和运行时服务
 frontend/src/app/workspace/        教师和学生业务页面
 frontend/src/components/           共享界面与业务组件
 frontend/src/core/                 API、国际化、线程和运行时适配
 config.teacher-copilot.example.yaml 教师 Agent、工具和技能配置示例
-deploy/helm/deer-flow/             Kubernetes 部署模板
+deploy/                            Kubernetes 部署模板
 ```
 
 ## 数据与安全
@@ -81,6 +80,6 @@ deploy/helm/deer-flow/             Kubernetes 部署模板
 
 ## 开源说明
 
-本项目基于 DeerFlow 2.0 进行业务扩展，复用其 Agent、工具、技能、记忆、沙箱、线程和流式运行能力。底层源码及其依赖关系保持原样，具体许可证和原作者署名见 [LICENSE](LICENSE)。
+本项目包含经许可使用的开源组件，具体许可证和版权说明见 [LICENSE](LICENSE)。
 
 项目中文详细说明见 [README_zh.md](README_zh.md)。
