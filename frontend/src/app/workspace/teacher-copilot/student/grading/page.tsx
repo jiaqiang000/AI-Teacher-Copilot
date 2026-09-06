@@ -1,6 +1,7 @@
 "use client";
 // 学生批改页(对照 Figma 08:题目/答案卡 + 五步进度 + 批改结果)
 // 真实流程:选图上传(OSS)→ POST /submissions → 轮询进度 → 批改结果
+import { CheckIcon, CircleIcon, LoaderCircleIcon } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -136,6 +137,7 @@ export default function StudentGradingPage() {
       ? STAGE_KEYS.length
       : STAGE_KEYS.findIndex((key) => key === stage);
   const isTerminal = status === "SUCCEEDED" || status === "FAILED";
+  const isRunning = !isTerminal;
 
   return (
     <div className="max-w-3xl space-y-5 p-4 sm:p-8">
@@ -215,8 +217,24 @@ export default function StudentGradingPage() {
               <ul className="mt-3 space-y-1 text-sm">
                 {STAGE_KEYS.map((key, i) => (
                   <li key={key} className="flex items-center gap-2">
-                    <span className="w-4">
-                      {i < stageIndex ? "✓" : i === stageIndex ? "●" : "○"}
+                    <span className="flex size-4 shrink-0 items-center justify-center">
+                      {/* 阶段图标只反映已有提交状态：当前运行阶段旋转，已完成阶段静态勾选。 */}
+                      {i < stageIndex ? (
+                        <CheckIcon
+                          aria-hidden="true"
+                          className="size-4 text-emerald-600"
+                        />
+                      ) : isRunning && i === stageIndex ? (
+                        <LoaderCircleIcon
+                          aria-hidden="true"
+                          className="text-primary size-4 animate-spin"
+                        />
+                      ) : (
+                        <CircleIcon
+                          aria-hidden="true"
+                          className="text-muted-foreground size-4"
+                        />
+                      )}
                     </span>
                     {stageLabel(key, t.teacherCopilot)}
                   </li>
