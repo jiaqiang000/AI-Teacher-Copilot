@@ -1,69 +1,36 @@
 /**
- * About DeerFlow markdown content. Inlined to avoid raw-loader dependency
- * (Turbopack cannot resolve raw-loader for .md imports).
+ * 关于页面的项目说明。内容直接内嵌，避免在 Turbopack 下引入原始 Markdown 文件。
  */
 import { APP_VERSION } from "@/version";
 
-export const aboutMarkdown = `# 🦌 [About DeerFlow ${APP_VERSION}](https://github.com/bytedance/deer-flow)
+export const aboutMarkdown = `# 智能作业批改 ${APP_VERSION}
 
-> **From Open Source, Back to Open Source**
+> AI Teacher Copilot：让每一份作业都被看见。
 
-DeerFlow (**D**eep **E**xploration and **E**fficient **R**esearch **Flow**) is an open-source **super agent harness** that orchestrates **sub-agents**, **memory**, and **sandboxes** to do almost anything — powered by **extensible skills**.
+智能作业批改面向中学教师，提供作业发布、学生作答、AI 批改、学情分析和教师 Copilot 一体化能力。
 
----
+## 主要能力
 
-## 🚀 Core Features
+- **作业管理**：支持手动录入、题目图片识别和题库选择。
+- **学生批改**：上传单题手写作答图片，查看 OCR（光学字符识别）、解析、批改和结果组装进度。
+- **数学步骤批改**：尊重学生的实际解法，输出步骤分、错误诊断和证据区块。
+- **英语作文评分**：按内容、结构、语法、词汇四个维度评分，总分 20 分。
+- **学情分析**：查看班级、学生、作业和题目的真实数据分析。
+- **教师 Copilot**：通过业务工具查询学情，并生成讲评和分层练习建议。
 
-* **Skills & Tools**: With built-in and extensible skills and tools, DeerFlow can do almost anything.
-* **Sub-Agents**: Sub-Agents help the main agent to do the tasks that are too complex to be done by the main agent.
-* **Sandbox & File System**: Safely execute code and manipulate files in the sandbox.
-* **Context Engineering**: Isolated sub-agent context, summarization to keep the context window sharp.
-* **Long-Term Memory**: Keep recording the user's profile, top of mind, and conversation history.
+## 数据说明
 
----
+页面展示的数据来自业务数据库和批改服务。教师与学生的访问范围由登录身份和业务归属校验共同决定；本项目不使用页面临时数据替代真实业务结果。
 
-## 🌟 GitHub Repository
+## 开源底座
 
-![Star History Chart](https://api.star-history.com/svg?repos=bytedance/deer-flow&type=Date)
+本项目在 DeerFlow 2.0 开源运行时基础上进行教育业务扩展，复用其 Agent（智能体）、工具、技能、记忆、沙箱、线程和流式执行能力。底层包和内部命名保持兼容，方便后续维护与升级。
 
-Explore DeerFlow on GitHub: [github.com/bytedance/deer-flow](https://github.com/bytedance/deer-flow)
+## 项目仓库
 
-## 🌐 Official Website
+[AI Teacher Copilot GitHub 仓库](https://github.com/jiaqiang000/AI-Teacher-Copilot)
 
-Visit the official website of DeerFlow: [deerflow.tech](https://deerflow.tech/)
+## 许可证
 
-## 📧 Support
-
-If you have any questions or need help, please contact us at [support@deerflow.tech](mailto:support@deerflow.tech).
-
----
-
-## 📜 License
-
-DeerFlow is proudly open source and distributed under the **MIT License**.
-
----
-
-## 🙌 Acknowledgments
-
-We extend our heartfelt gratitude to the open source projects and contributors who have made DeerFlow a reality. We truly stand on the shoulders of giants.
-
-### Core Frameworks
-- **[LangChain](https://github.com/langchain-ai/langchain)**: A phenomenal framework that powers our LLM interactions and chains.
-- **[LangGraph](https://github.com/langchain-ai/langgraph)**: Enabling sophisticated multi-agent orchestration.
-- **[Next.js](https://nextjs.org/)**: A cutting-edge framework for building web applications.
-
-### UI Libraries
-- **[Shadcn](https://ui.shadcn.com/)**: Minimalistic components that power our UI.
-- **[SToneX](https://github.com/stonexer)**: For his invaluable contribution to token-by-token visual effects.
-
-These outstanding projects form the backbone of DeerFlow and exemplify the transformative power of open source collaboration.
-
-### Special Thanks
-Finally, we want to express our heartfelt gratitude to the core authors of DeerFlow 1.0 and 2.0:
-
-- **[Daniel Walnut](https://github.com/hetaoBackend/)**
-- **[Henry Li](https://github.com/magiccube/)**
-
-Without their vision, passion and dedication, \`DeerFlow\` would not be what it is today.
+本项目遵循仓库中的 MIT License。原始开源项目及贡献者致谢见 [LICENSE](https://github.com/jiaqiang000/AI-Teacher-Copilot/blob/main/LICENSE)。
 `;
