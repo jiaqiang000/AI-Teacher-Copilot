@@ -72,3 +72,6 @@ config.yaml.bak
 
 # Understand knowledge-graph artifacts (local only)
 .ua/
+
+# 本地生成的代码知识库，不作为项目运行或发布文件
+.zread/
