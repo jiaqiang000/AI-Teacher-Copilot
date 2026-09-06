@@ -8,7 +8,7 @@ Fixes #
        - The trigger — what made you write this? A bug you hit, a feature you need,
          tech debt, or a prod issue?
        - The pain being addressed — user-facing problem, or what it unblocks.
-     For non-trivial features, please open an issue/discussion first to align on
+     For non-trivial features, please open an issue first to align on
      scope before writing code. -->
 
 

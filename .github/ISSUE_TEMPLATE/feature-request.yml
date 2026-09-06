@@ -6,9 +6,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the suggestion. For non-trivial features, please open a
-        [Discussion](https://github.com/jiaqiang000/AI-Teacher-Copilot/discussions/categories/ideas)
-        first to align on scope before writing code.
+        Thanks for the suggestion. For non-trivial features, please describe
+        the user problem, expected outcome, and scope before writing code.
 
   - type: checkboxes
     id: preflight

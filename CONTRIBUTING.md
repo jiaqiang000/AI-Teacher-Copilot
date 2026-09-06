@@ -416,7 +416,7 @@ the generated zip before attaching it to a public issue.
 
 - Check existing [Issues](https://github.com/jiaqiang000/AI-Teacher-Copilot/issues)
 - Read the [Documentation](backend/docs/)
-- Ask questions in [Discussions](https://github.com/jiaqiang000/AI-Teacher-Copilot/discussions)
+- Ask questions through [Issues](https://github.com/jiaqiang000/AI-Teacher-Copilot/issues/new/choose)
 
 ## License
 

@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: 💬 Questions & usage help
-    url: https://github.com/jiaqiang000/AI-Teacher-Copilot/discussions/categories/q-a
-    about: "How do I use X? Why does Y behave like that? Ask in Discussions — it gets answered faster and stays searchable."
+    url: https://github.com/jiaqiang000/AI-Teacher-Copilot/issues/new/choose
+    about: "How do I use X? Why does Y behave like that? Use the issue templates so the question is searchable."
   - name: 💡 Ideas & proposals
-    url: https://github.com/jiaqiang000/AI-Teacher-Copilot/discussions/categories/ideas
-    about: Have a half-formed idea? Float it in Discussions before opening a formal feature request.
+    url: https://github.com/jiaqiang000/AI-Teacher-Copilot/issues/new?template=feature-request.yml
+    about: Have an idea? Use the feature request template to describe the problem and expected outcome.
   - name: 🔒 Report a security vulnerability
     url: https://github.com/jiaqiang000/AI-Teacher-Copilot/security/policy
     about: Do not open a public issue for security problems. Follow the security policy instead.

@@ -16,7 +16,7 @@ Python 3.12+ / Node.js 22+ / uv(可选 uv sync)
 ## 2. 数据初始化
 
 ```bash
-cd deer-flow/backend
+cd AI-Teacher-Copilot/backend
 # 建表 + 写入标准分类字典与题库 Fixture
 uv run python -m app.teacher_copilot.db.init_db --seed
 # (可选)写入演示数据(teacher_01 / class_03 八三班 / 30 学生 / hw_004)
@@ -40,7 +40,7 @@ PY
 
 ```bash
 # 后端 Gateway(挂载了 teacher_copilot 路由:T004)
-cd deer-flow && make dev            # 或 uv run --project backend uvicorn app.gateway.app:app
+cd AI-Teacher-Copilot && make dev            # 或 uv run --project backend uvicorn app.gateway.app:app
 
 # 前端
 cd frontend && npm install && npm run dev
