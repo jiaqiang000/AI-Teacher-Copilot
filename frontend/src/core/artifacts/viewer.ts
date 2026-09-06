@@ -113,7 +113,7 @@ export function parseArtifactViewerQuery(
  * anything an effect writes.
  */
 export function artifactViewerTitle(filepath: string | undefined) {
-  return filepath ? `${getFileName(filepath)} - DeerFlow` : "DeerFlow";
+  return filepath ? `${getFileName(filepath)} - 智能作业批改` : "智能作业批改";
 }
 
 /**
