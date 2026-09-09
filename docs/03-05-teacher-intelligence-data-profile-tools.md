@@ -1734,7 +1734,9 @@ RECURRING_ERROR
 
 命中任一原因即成为候选。
 
-最多返回 Top 10，排序固定为：
+业务数据层返回所有命中规则的学生，不执行 Top N 截断。
+
+排序固定为：
 
 ```text
 reason_codes 数量 DESC
@@ -2065,6 +2067,8 @@ MySQL 当前有效班级事实
 
 Class Profile 的计算不读取 Redis Student Profile 作为事实源；Tool 也不允许 Agent 自行重新计算或覆盖 `avg_mastery / weak_points / attention_students` 等确定性画像结论。
 
+`attention_students` 返回所有命中 `ProfileAlgorithmV1` 长期关注规则的学生，不在 Tool 层执行 Top N 截断。
+
 边界：`get_class_profile` 回答班级长期学情，不用于枚举完整学生名单；需要班级成员列表时使用 `list_class_students`。
 
 ---
@@ -2073,7 +2077,7 @@ Class Profile 的计算不读取 Redis Student Profile 作为事实源；Tool �
 
 **作用**
 
-查询指定班级的真实学生成员列表，为全班批量诊断、批量个性化练习等任务提供需要处理的 `student_id` 集合。
+查询指定班级的真实学生成员列表，为需要枚举班级成员的教师任务提供真实 `student_id` 集合。
 
 **输入参数**
 
@@ -2304,7 +2308,7 @@ TeachingMaterial[]（教学材料列表）
 
 **作用**
 
-根据标准知识点、难度、题型和年级检索独立 Question Bank 中的练习题，为学生个性化练习和班级分层练习提供候选题目。
+根据标准知识点、难度、题型和年级检索独立 Question Bank 中的练习题，为作业讲评后的巩固题、单学生针对性练习和教师选题提供候选题目。
 
 **输入参数**
 
