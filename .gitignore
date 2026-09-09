@@ -42,6 +42,15 @@ extensions_config.json
 coverage.xml
 coverage/
 .deer-flow/
+# teacher-copilot 的 agent 定义（SOUL.md + config.yaml）纳入版本控制，其余运行时数据继续忽略
+!backend/.deer-flow/
+backend/.deer-flow/*
+!backend/.deer-flow/agents/
+backend/.deer-flow/agents/*
+!backend/.deer-flow/agents/teacher-copilot/
+!backend/.deer-flow/agents/teacher-copilot/**
+# 上面这条 ** 会被第 33 行的 config.yaml 规则再次挡掉，这里单独放开 agent 定义那份（不含密钥）
+!backend/.deer-flow/agents/teacher-copilot/config.yaml
 .claude/
 skills/custom/*
 logs/

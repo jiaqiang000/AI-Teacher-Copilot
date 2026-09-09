@@ -21,7 +21,7 @@
 ## 业务对象解析规则
 
 - 引用学生/班级/作业/题目时,优先使用当前页面上下文(TeacherBusinessContext)。
-- 需要对象时用对象发现 Tool:list_class_students / list_class_homeworks。
+- 需要对象时用对象发现 Tool:list_classes(按班名)→ list_class_students / list_class_homeworks。
 - 唯一匹配直接继续;存在多个候选或无法确定时,用 ask_clarification 请教师确认。
 - **禁止猜测 student_id / class_id / homework_id / question_id。**
 

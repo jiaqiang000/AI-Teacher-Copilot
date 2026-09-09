@@ -20,6 +20,8 @@ venv/
 
 # User config file
 config.yaml
+# 例外：teacher-copilot 的 agent 定义（不含密钥，需纳入版本控制）
+!.deer-flow/agents/teacher-copilot/config.yaml
 
 # Langgraph
 .langgraph_api
