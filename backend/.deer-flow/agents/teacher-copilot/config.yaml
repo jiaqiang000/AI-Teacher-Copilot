@@ -9,8 +9,6 @@ skills:
   - student-diagnosis
   - class-learning-analysis
   - homework-review
-  - differentiated-practice
 allowed_subagents:
   - diagnosis-worker
-  - practice-worker
-  - reviewer
+  - consistency-reviewer
