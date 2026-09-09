@@ -52,7 +52,7 @@ async def list_classes(keyword: str = "") -> dict:
 async def list_class_students(class_id: str) -> dict:
     """查询指定班级的真实学生成员列表(谁在这个班级里)。
 
-    用于全班批量诊断/练习等需要 student_id 集合的任务;不计算学生成绩或掌握度,
+    为需要枚举班级成员的教师任务提供真实 student_id 集合;不计算学生成绩或掌握度,
     需要长期学情时用 get_class_profile。
     """
     try:

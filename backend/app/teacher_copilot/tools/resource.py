@@ -22,7 +22,8 @@ async def search_question_bank(
     grade: str | None = None, count: int = 10,
     exclude_question_bank_item_ids: list[str] | None = None,
 ) -> dict:
-    """按标准知识点、难度、题型、年级检索系统题库练习题,用于分层/个性化练习选题。
+    """按标准知识点、难度、题型、年级检索系统题库练习题,用于作业讲评后的巩固题、
+    单学生针对性练习和教师选题。
 
     只返回 QuestionBankItem(题库资源),不返回已布置到作业的题目。
     多个知识点表示"至少命中其中一个";为多个知识点分别找题应分别查询。
