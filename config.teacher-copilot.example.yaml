@@ -14,7 +14,6 @@ agents:
       - student-diagnosis
       - class-learning-analysis
       - homework-review
-      - differentiated-practice
 
 # ===== Tools(8 个业务 Tool,注册进 DeerFlow Tool Runtime)=====
 tools:
@@ -47,7 +46,13 @@ tools:
 subagents:
   custom_agents:
     diagnosis-worker:
-      description: 对分配的学生集合执行深度学习诊断
+      description: 对分配的学生执行深度学习诊断
+      system_prompt: >
+        你是学习诊断子智能体,只处理分配给你的明确 student_id。
+        如果一次分配多个 student_id,必须一个一个地按照 student-diagnosis SOP 独立分析:
+        完成一个学生并形成该学生独立的 StudentDiagnosisResult 后,再处理下一个学生。
+        不得把多个学生的 Profile、History 或诊断结论混在一起。
+        不负责筛选学生或班级整体决策。
       tools:
         - get_student_profile
         - get_student_grading_history
@@ -57,27 +62,19 @@ subagents:
         - task
         - ask_clarification
         - present_files
-    practice-worker:
-      description: 对分配的学生组或学生批次生成针对性练习
+    consistency-reviewer:
+      description: 独立审核完整班级周度复盘的事实与语义一致性
+      system_prompt: >
+        你是班级周度复盘一致性审核子智能体。
+        只检查已有 WeeklyClassReview 是否与正式 Profile、Analysis
+        和学生历史证据一致,不重新生成整份周度复盘,
+        不判断教学法是否最优。
       tools:
-        - get_student_profile
+        - list_class_homeworks
         - get_class_profile
-        - search_question_bank
-      skills:
-        - differentiated-practice
-      disallowed_tools:
-        - task
-        - ask_clarification
-        - present_files
-    reviewer:
-      description: 独立审核大型教学方案的事实一致性和练习匹配合理性
-      tools:
-        - get_class_profile
+        - get_homework_analysis
         - get_student_profile
         - get_student_grading_history
-        - get_homework_analysis
-        - get_question_analysis
-        - search_question_bank
       disallowed_tools:
         - task
         - ask_clarification
