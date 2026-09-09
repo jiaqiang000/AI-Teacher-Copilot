@@ -400,7 +400,9 @@ class ProfileAlgorithmV1(BaseRepository):
     def _class_attention(self, student_ids, profiles: dict, class_weak: list[dict]) -> list[dict]:
         """班级重点关注学生:命中任一原因(LOW_RECENT_SCORE/DECLINING_TREND/MULTIPLE_WEAK_POINTS/RECURRING_ERROR)。
 
-        参考文档 03 §4.1.11:最多 Top10,排序 reason 数量 DESC → recent_score ASC。
+        参考文档 03 §4.1.11:业务数据层返回所有命中规则的学生,不做 Top N 截断;
+        排序 reason 数量 DESC → recent_score ASC。截断会让学生筛查漏人,
+        展示层的默认条数属于展示裁剪,不影响 Agent 的 Screening 判断。
         """
         weak_keys = {w["knowledge_point_key"] for w in class_weak}
         cands = []
@@ -428,7 +430,7 @@ class ProfileAlgorithmV1(BaseRepository):
         cands.sort(key=lambda x: (-len(x["reason_codes"]),
                                   (x["recent_score_rate"] if x["recent_score_rate"] is not None else 10),
                                   -x["weak_point_count"], x["student_id"]))
-        return cands[:10]
+        return cands
 
 
 # ---------- 工具函数 ----------
