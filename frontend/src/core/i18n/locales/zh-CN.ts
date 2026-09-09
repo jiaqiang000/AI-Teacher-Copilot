@@ -152,7 +152,7 @@ export const zhCN: Translations = {
       },
       {
         suggestion: "诊断学生薄弱点",
-        prompt: "诊断张三近期的数学薄弱知识点，并给出针对性的分层练习建议。",
+        prompt: "诊断张三近期的数学薄弱知识点，并给出针对性的练习建议。",
         icon: MicroscopeIcon,
       },
     ],

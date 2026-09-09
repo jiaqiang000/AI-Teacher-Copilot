@@ -159,7 +159,7 @@ export const enUS: Translations = {
       {
         suggestion: "Diagnose student gaps",
         prompt:
-          "Diagnose Zhang San's recent weak points in mathematics and suggest targeted, leveled practice.",
+          "Diagnose Zhang San's recent weak points in mathematics and suggest targeted practice.",
         icon: MicroscopeIcon,
       },
     ],

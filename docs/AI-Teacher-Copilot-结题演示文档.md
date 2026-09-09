@@ -11,7 +11,7 @@
 
 面向中学教师的 **AI 作业批改与学情助手**:教师创建作业 → 学生上传单题图片 →
 系统真实 OCR + AI 批改(数学步骤分 / 英语作文四维评分)→ 结果沉淀为结构化画像
-与学情分析 → 教师通过自然语言提问(Copilot)获得诊断 / 讲评 / 分层练习建议。
+与学情分析 → 教师通过自然语言提问(Copilot)获得诊断 / 讲评 / 针对性练习建议。
 
 - 场景:教师与班级(30 人),数学计算/解答题 + 英语作文
 - 核心:确定性算法(ProfileAlgorithmV1 / AnalysisCalculationV1)+ 可解释批改
@@ -22,14 +22,14 @@
 DeerFlow 2.0(复用,核心零改动)
 │
 ├── Agent 运行时(Lead Agent / Custom Agent)→ teacher-copilot
-├── Tool/Skill 运行时 → 8 个业务 Tool + 4 个 SKILL.md
+├── Tool/Skill 运行时 → 8 个业务 Tool + 3 个 SKILL.md
 ├── StreamBridge / Chat / HITL / Memory / Sub-Agent / Langfuse
 │
 ├── Teacher Copilot(本项目,就地扩展 backend/app/teacher_copilot/)
 │   ├── db(15 表 + 标准字典 + 题库 + 演示数据)
 │   ├── grading(OCR → 数学步骤批改 / 英语两阶段 → 组装校验)
 │   ├── services(ProfileAlgorithmV1 / AnalysisCalculationV1)
-│   ├── tools(8 个 @tool)/ agents(SOUL/Middleware/对象解析/周度复盘/分层/审核)
+│   ├── tools(8 个 @tool)/ agents(SOUL/Middleware/对象解析/周度复盘/一致性审核)
 │   └── api(作业/提交/批改/画像/分析路由,gateway 仅加一行 include_router)
 │
 ├── 前端(frontend/src,对照 Figma 01-08 八页)
@@ -50,7 +50,7 @@ Skill / Middleware / 业务模块 / 前端页面就地扩展;业务事实(Schema
 | 5 | 学情分析 | 作业分析(完成率/成绩分布/高错题/异常学生)+ 题目下钻 |
 | 6 | 学生/班级画像 | mastery/weak/recurring/trend/难度表现(确定性算法) |
 | 7 | 教师工作台 | 摘要卡/我的班级/最近作业(对照 Figma 01) |
-| 8 | Teacher Copilot | 8 Tool + 4 Skill,对象解析/HITL,按需 Sub-Agent(周度复盘/分层/审核) |
+| 8 | Teacher Copilot | 8 Tool + 3 Skill,对象解析/HITL,按需 Sub-Agent(周度复盘/一致性审核) |
 
 ## 4. 真实运行验证结果(2026-09-02)
 
