@@ -10,14 +10,20 @@ from __future__ import annotations
 
 from langchain.tools import tool
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.teacher_copilot.api.identity import get_teacher_id_from_runtime
 from app.teacher_copilot.api.response import fail, ok
 from app.teacher_copilot.db.engine import get_session
-from app.teacher_copilot.db.models.grading import GradingResult
+from app.teacher_copilot.db.models.grading import (
+    GradingResult,
+    GradingResultError,
+    GradingResultKnowledgePoint,
+)
 from app.teacher_copilot.errors import TcError
 from app.teacher_copilot.services.permission_service import TeacherPermissionService
 from app.teacher_copilot.services.profile_service import ProfileAlgorithmV1
+from app.teacher_copilot.tools.common import parse_iso_time
 from app.teacher_copilot.tools.schemas.inputs import (
     GetClassProfileInput,
     GetStudentGradingHistoryInput,
@@ -58,7 +64,11 @@ async def get_student_grading_history(
     end_time: str | None = None,
     limit: int = 20,
 ) -> dict:
-    """查询学生真实历史批改事实(含标准 key/code 与 raw 语义),为画像结论提供证据。"""
+    """查询学生真实历史批改事实(含标准 key/code 与 raw 语义),为画像结论提供证据。
+
+    可按学科、标准二级知识点、标准二级错误类型、作业与时间范围收窄范围;
+    时间参数为 ISO 格式(如 2026-09-01T00:00:00)。
+    """
     try:
         teacher_id = await get_teacher_id_from_runtime(None)
         async with TeacherPermissionService() as permissions:
@@ -69,13 +79,54 @@ async def get_student_grading_history(
             )
             if subject:
                 stmt = stmt.where(GradingResult.subject == subject)
-            rows = await session.scalars(stmt.order_by(GradingResult.created_at.desc()).limit(limit))
+            if homework_id:
+                stmt = stmt.where(GradingResult.submission.has(homework_id=homework_id))
+            if knowledge_point_key:
+                stmt = stmt.where(GradingResult.grading_result_id.in_(
+                    select(GradingResultKnowledgePoint.grading_result_id).where(
+                        GradingResultKnowledgePoint.knowledge_point_key == knowledge_point_key
+                    )
+                ))
+            if error_code:
+                stmt = stmt.where(GradingResult.grading_result_id.in_(
+                    select(GradingResultError.grading_result_id).where(
+                        GradingResultError.error_code == error_code
+                    )
+                ))
+            if start_time:
+                stmt = stmt.where(
+                    GradingResult.created_at >= parse_iso_time(start_time, "start_time")
+                )
+            if end_time:
+                stmt = stmt.where(
+                    GradingResult.created_at <= parse_iso_time(end_time, "end_time")
+                )
+            stmt = stmt.options(
+                selectinload(GradingResult._kp_rows),
+                selectinload(GradingResult._error_rows),
+            )
+            rows = await session.scalars(
+                stmt.order_by(GradingResult.created_at.desc()).limit(limit)
+            )
             return ok([{
                 "grading_result_id": g.grading_result_id,
                 "subject": g.subject, "question_type": g.question_type,
                 "difficulty": g.difficulty,
                 "score": {"earned": g.score_earned, "max": g.score_max, "rate": g.score_rate},
                 "feedback": g.feedback,
+                # 标准 key/code + raw 语义:供 Skill 引用 performance / error 级证据
+                "knowledge_points": [
+                    {"knowledge_point_key": kp.knowledge_point_key, "name": kp.name,
+                     "performance": kp.performance, "raw_name": kp.raw_name,
+                     "evidence": kp.evidence}
+                    for kp in g._kp_rows
+                ],
+                "errors": [
+                    {"error_code": e.error_code, "type_name": e.type_name,
+                     "raw_type": e.raw_type, "knowledge_point_key": e.knowledge_point_key,
+                     "description": e.description, "evidence": e.evidence}
+                    for e in g._error_rows
+                ],
                 "created_at": g.created_at.isoformat() if g.created_at else None,
             } for g in rows])
     except TcError as e:

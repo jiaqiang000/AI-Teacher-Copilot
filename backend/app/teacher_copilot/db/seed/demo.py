@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 
 from app.teacher_copilot.db.engine import get_session
@@ -15,6 +17,8 @@ from app.teacher_copilot.db.models.org import ClassRoom, ClassStudent, Student, 
 TEACHER_ID = "teacher_01"
 CLASS_ID = "class_03"
 CLASS_NAME = "八三班"
+# 已发布作业必须有 published_at(发布动作写入);固定值保证 seed 可重复执行且结果稳定
+HW_004_PUBLISHED_AT = datetime(2026, 9, 1, 8, 0, 0)
 EXTRA_CLASSES = (
     ("class_04", "八四班", 100, 32),
     ("class_05", "八五班", 200, 28),
@@ -63,7 +67,11 @@ async def seed_demo() -> None:
             session.add(Homework(
                 homework_id="hw_004", name="八年级数学周末作业", class_id=CLASS_ID,
                 teacher_id=TEACHER_ID, subject="math", status="PUBLISHED",
+                published_at=HW_004_PUBLISHED_AT,
             ))
+        elif hw.status == "PUBLISHED" and hw.published_at is None:
+            # 修复历史种子写入的"已发布但无发布时间"记录(幂等,可重复执行)
+            hw.published_at = HW_004_PUBLISHED_AT
         q_samples = [
             ("q001", 1, "calculation", "easy", "解方程 2x + 4 = 8", 10),
             ("q002", 2, "solution", "medium", "解含括号的一元一次方程", 10),

@@ -16,6 +16,7 @@ from app.teacher_copilot.db.models.homework import Homework
 from app.teacher_copilot.db.models.org import ClassRoom, ClassStudent, Student
 from app.teacher_copilot.errors import TcError
 from app.teacher_copilot.services.permission_service import TeacherPermissionService
+from app.teacher_copilot.tools.common import parse_iso_time
 from app.teacher_copilot.tools.schemas.inputs import (
     ListClassesInput,
     ListClassHomeworksInput,
@@ -80,6 +81,8 @@ async def list_class_homeworks(
 ) -> dict:
     """查询指定班级在某个学科、时间范围内的作业列表(这个时间范围有哪些作业)。
 
+    只返回已发布(PUBLISHED)作业,草稿不进入 Agent 视野;时间参数为 ISO 格式
+    (如 2026-09-01T00:00:00),按发布时间过滤。
     用于"本周/近期复盘"等发现 homework_id 的任务;不计算完成率或成绩,
     需要某份作业表现时用 get_homework_analysis。
     """
@@ -91,9 +94,18 @@ async def list_class_homeworks(
             stmt = select(Homework).where(
                 Homework.class_id == class_id,
                 Homework.teacher_id == teacher_id,
+                Homework.status == "PUBLISHED",
             )
             if subject:
                 stmt = stmt.where(Homework.subject == subject)
+            if start_time:
+                stmt = stmt.where(
+                    Homework.published_at >= parse_iso_time(start_time, "start_time")
+                )
+            if end_time:
+                stmt = stmt.where(
+                    Homework.published_at <= parse_iso_time(end_time, "end_time")
+                )
             rows = await session.scalars(
                 stmt.order_by(Homework.published_at.desc().nullslast()).limit(limit)
             )

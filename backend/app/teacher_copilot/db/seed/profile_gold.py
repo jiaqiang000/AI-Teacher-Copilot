@@ -45,8 +45,10 @@ async def main() -> None:
             s.add(Teacher(teacher_id="teacher_01", name="王老师"))
         hw = await s.scalar(select(Homework).where(Homework.homework_id == "hw_p"))
         if hw is None:
+            # 已发布作业必须有 published_at(发布动作写入)
             s.add(Homework(homework_id="hw_p", name="移项专项作业", class_id="class_03",
-                           teacher_id="teacher_01", subject="math", status="PUBLISHED"))
+                           teacher_id="teacher_01", subject="math", status="PUBLISHED",
+                           published_at=now - timedelta(days=30)))
         for no in range(1, 6):
             qid = f"q_p{no}"
             if await s.scalar(select(Question).where(Question.question_id == qid)) is None:
