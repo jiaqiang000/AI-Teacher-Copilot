@@ -2,7 +2,7 @@
 
 ## 1. Tool 与 Skill 的职责边界
 
-Teacher Agent 完整能力规划包含 9 个 Tool 和 5 个 Skill。9 个 Tool 负责原子业务能力，5 个 Skill 用于完成稳定、可复用的复杂教学任务。
+Teacher Agent 完整能力规划包含 9 个 Tool 和 4 个 Skill。9 个 Tool 负责原子业务能力，4 个 Skill 用于完成稳定、可复用的复杂教学任务。
 
 ```text
 Teacher Agent
@@ -11,8 +11,7 @@ Teacher Agent
 │   ├── student-diagnosis（学生学习诊断）
 │   ├── class-learning-analysis（班级学情分析）
 │   ├── homework-review（作业讲评分析）
-│   ├── personalized-intervention（个性化教学干预）
-│   └── differentiated-practice（分层练习设计）
+│   └── personalized-intervention（个性化教学干预）
 │
 └── Tools（实际查询和操作数据）
     ├── get_student_profile
@@ -30,10 +29,10 @@ Teacher Agent
 
 ```text
 完整规划
-9 Tools + 5 Skills
+9 Tools + 4 Skills
 
 当前阶段实现
-8 Tools + 4 Skills
+8 Tools + 3 Skills
 
 暂缓实现
 ├── search_teaching_materials
@@ -215,9 +214,9 @@ ProfileAlgorithmV1
 
 ---
 
-## 2. 5 个 Skill 的完整设计
+## 2. 4 个 Skill 的完整设计
 
-完整规划中的 5 个 Skill 覆盖 Teacher Copilot 的教师任务链路：
+完整规划中的 4 个 Skill 覆盖 Teacher Copilot 的教师任务链路：
 
 ```text
 发现问题
@@ -232,12 +231,9 @@ ProfileAlgorithmV1
     这次作业哪里有问题？
           ↓
        采取行动
-          │
-          ├── personalized-intervention（个性化教学干预）
-          │   一个学生怎么干预？
-          │
-          └── differentiated-practice（分层练习设计）
-              不同学生怎么练？
+          ↓
+       personalized-intervention（个性化教学干预）【本阶段暂缓】
+       一个学生怎么干预？
 ```
 
 ### 2.1 `student-diagnosis`（学生学习诊断）
@@ -493,77 +489,7 @@ personalized-intervention
 
 ---
 
-### 2.5 `differentiated-practice`（分层练习设计）
-
-目标：根据班级和学生掌握情况，将学生划分为不同学习层次，并为各层匹配不同知识点、难度和题型的练习。
-
-主要 Tool：
-
-```text
-get_class_profile（查询班级画像：获取班级整体掌握情况和学生分布）
-list_class_students（查询班级学生列表：枚举需要参与分层的完整学生集合）
-get_student_profile（查询学生画像：读取具体学生的掌握情况）
-search_question_bank（检索题库：按知识点、难度和题型匹配分层练习）
-```
-
-固定 SOP：
-
-```text
-get_class_profile
-        ↓
-识别班级整体分布
-        ↓
-list_class_students
-        ↓
-获得完整班级学生集合
-        ↓
-按需 get_student_profile
-读取参与分层学生的具体掌握情况
-        ↓
-划分学生层次
-        ↓
-确定各组：
-knowledge_points（知识点）
-difficulty（难度）
-question_type（题型）
-        ↓
-search_question_bank
-        ↓
-生成分层练习
-```
-
-默认形成三个练习层次：
-
-```text
-基础组
-→ 补基础知识点
-→ easy（简单）
-
-巩固组
-→ 当前核心知识点
-→ medium（中等）
-
-提升组
-→ 综合应用
-→ hard（困难）
-```
-
-输出结构：
-
-```text
-学生分层结果
-各层训练目标
-各层知识点
-各层难度
-各层题目集合
-分层依据
-```
-
-`list_class_students` 只补齐“有哪些学生需要参与分层”的数据准备，不改变该 Skill 的核心教学判断逻辑。
-
----
-
-### 2.6 Skill 边界
+### 2.5 Skill 边界
 
 以下能力不单独设计为 Skill：
 
@@ -586,7 +512,7 @@ summary-generation
 - 薄弱点分析和错误分析属于现有 Skill 的内部步骤。
 - 报告和总结属于 Skill 的输出阶段，不构成独立教学任务流程。
 
-完整能力规划固定为 5 个 Skill；当前阶段实现其中 4 个，`personalized-intervention` 因依赖暂缓的 RAG 教学资料检索能力而暂缓实现。
+完整能力规划固定为 4 个 Skill；当前阶段实现其中 3 个，`personalized-intervention` 因依赖暂缓的 RAG 教学资料检索能力而暂缓实现。
 
 ---
 
@@ -1180,7 +1106,7 @@ Argument Generation Accuracy（参数生成准确率）
 Tool Execution Success Rate（工具执行成功率）
 ```
 
-当前实现的 4 个 Skill 还需要增加流程级评测：
+当前实现的 3 个 Skill 还需要增加流程级评测：
 
 ```text
 Skill Routing Accuracy（Skill 选择准确率）
@@ -1573,7 +1499,7 @@ Teacher Lead Agent Tool Set
 
 ### 14.2 SKILL.md 使用 DeerFlow 原生格式
 
-当前阶段实现 4 个 `SKILL.md`；`personalized-intervention` 的设计保留，但不进入当前 Skill 注册与执行范围。
+当前阶段实现 3 个 `SKILL.md`；`personalized-intervention` 的设计保留，但不进入当前 Skill 注册与执行范围。
 
 每个 `SKILL.md` 分为两层：
 
@@ -1625,7 +1551,7 @@ Required Tools
 
 `task_goal / required_tools / workflow / evidence_rules / output_format / fallback` 等内容放在 Markdown 正文中，不作为自定义 frontmatter 字段；这样遵守 DeerFlow 当前 SKILL frontmatter schema。
 
-### 14.3 当前 4 个 Skill 的 allowed-tools
+### 14.3 当前 3 个 Skill 的 allowed-tools
 
 `student-diagnosis`：
 
@@ -1650,16 +1576,6 @@ allowed-tools:
   - get_homework_analysis
   - get_question_analysis
   - get_class_profile
-```
-
-`differentiated-practice`：
-
-```yaml
-allowed-tools:
-  - get_class_profile
-  - list_class_students
-  - get_student_profile
-  - search_question_bank
 ```
 
 后续启用 `personalized-intervention` 时：
@@ -1756,9 +1672,7 @@ skills/
     │   └── SKILL.md
     ├── class-learning-analysis/
     │   └── SKILL.md
-    ├── homework-review/
-    │   └── SKILL.md
-    └── differentiated-practice/
+    └── homework-review/
         └── SKILL.md
 ```
 
@@ -1808,7 +1722,7 @@ DeerFlow Skill Runtime
 ```text
 9 个 Tools
   ↓
-5 个 Skills
+4 个 Skills
   ↓
 Teacher Agent
   ↓
@@ -1820,7 +1734,7 @@ Teacher Agent
 ```text
 8 个 Tools
   ↓
-4 个 Skills
+3 个 Skills
   ↓
 Teacher Lead Agent
 ```
