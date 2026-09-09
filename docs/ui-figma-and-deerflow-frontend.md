@@ -333,7 +333,7 @@ teacher-copilot
 
 ### 6.3 Sub-Agent Management
 
-Diagnosis Worker / Practice Worker / Reviewer 是 DeerFlow Runtime 内按需 `task` 启动的执行能力：
+Diagnosis Worker / Consistency Reviewer 是 DeerFlow Runtime 内按需 `task` 启动的执行能力：
 
 ```text
 Sub-Agent
@@ -351,13 +351,12 @@ Teacher Memory 当前直接复用 DeerFlow Memory Runtime，只保存教师偏�
 
 ### 6.5 Skill Management
 
-当前 4 个实施 Skill 是工程配置与 `SKILL.md`：
+当前 3 个实施 Skill 是工程配置与 `SKILL.md`：
 
 ```text
 student-diagnosis
 class-learning-analysis
 homework-review
-differentiated-practice
 ```
 
 教师不负责在产品中编辑 `SKILL.md` 或配置 allowed-tools，因此不建设 Skill Management 页面。
@@ -426,6 +425,8 @@ ClassProfile
 ```
 
 Frontend 不重新计算 `avg_mastery / weak_point / attention_students`。
+
+`ClassProfile.attention_students` 在业务层返回所有命中 `ProfileAlgorithmV1` 关注规则的学生。Class Detail UI 可以基于既有排序默认只展示有限数量，但这只是展示裁剪，不得影响 Teacher Copilot 后续的 Screening 与 Deep Diagnosis 判断。
 
 ### 7.2 Student Profile
 
