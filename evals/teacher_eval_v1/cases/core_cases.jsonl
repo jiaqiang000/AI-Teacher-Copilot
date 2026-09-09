@@ -42,40 +42,44 @@
   "required_tools": ["get_homework_analysis", "get_question_analysis", "get_class_profile"]},
  "forbidden_behavior": ["把一次低表现直接升级为长期 weak_point"],
  "result_requirements": ["讲评优先级 + 区分本次/长期"]}
-{"case_id": "T-L5-001", "level": "L5", "query": "分析这次作业的问题,然后根据班级情况给学生安排分层练习。",
+{"case_id": "T-L5-001", "level": "L5", "query": "分析一下这次作业整体有什么问题,再深入看看张三最近数学为什么一直有问题。",
  "snapshot_id": "teacher_eval_v1",
- "expected_behavior": {"execution_level": "L5", "skills": ["homework-review", "differentiated-practice"]},
- "forbidden_behavior": ["task", "把 Homework question_id 当 QuestionBankItem"],
- "result_requirements": ["作业分析 + 分层练习"]}
+ "expected_behavior": {"execution_level": "L5", "skills": ["homework-review", "student-diagnosis"],
+  "required_tools": ["get_homework_analysis", "get_question_analysis", "get_class_profile",
+                     "get_student_profile", "get_student_grading_history"]},
+ "forbidden_behavior": ["task"],
+ "result_requirements": ["作业讲评 + 张三诊断,由 Lead Agent 串行两个 Skill"]}
 {"case_id": "T-L5-002", "level": "L5", "query": "作业讲评后找类似题。",
  "snapshot_id": "teacher_eval_v1",
  "expected_behavior": {"execution_level": "L4", "skills": ["homework-review"],
   "required_tools": ["search_question_bank"]},
  "forbidden_behavior": ["task", "返回非 QuestionBankItem"],
  "result_requirements": ["题目来自 Fixture 题库"]}
-{"case_id": "T-L6-001", "level": "L6", "query": "帮我做一下八三班这周数学的整体复盘,看看全班主要薄弱点,重点关注哪些学生。",
+{"case_id": "T-L6-001", "level": "L6", "query": "帮我复盘一下八三班这周数学情况,看看班级主要问题和哪些学生需要关注。",
+ "snapshot_id": "teacher_eval_v1",
+ "gold_facts": {"weekly_attention_students": ["stu_003", "stu_011", "stu_018", "stu_024"]},
+ "expected_behavior": {"execution_level": "L6", "required_tools": ["list_class_homeworks", "get_homework_analysis", "get_class_profile"]},
+ "forbidden_behavior": ["task", "task(subagent_type=\"diagnosis-worker\")",
+                        "把 HomeworkAnalysis.attention 等同 weekly"],
+ "result_requirements": ["完成全班 Screening 与班级周度总结,不启动 Sub-Agent"]}
+{"case_id": "T-L6-002", "level": "L6", "query": "帮我复盘八三班这周数学,并把持续异常的学生分别具体分析一下。",
  "snapshot_id": "teacher_eval_v1",
  "gold_facts": {"weekly_attention_students": ["stu_003", "stu_011", "stu_018", "stu_024"]},
  "expected_behavior": {"execution_level": "L6", "required_tools": ["list_class_homeworks", "get_homework_analysis", "get_class_profile"],
   "required_subagents": ["diagnosis-worker"]},
- "forbidden_behavior": ["一开始对全班 30 人全部委派", "把 HomeworkAnalysis.attention 等同 weekly"],
- "result_requirements": ["覆盖 4 个周度重点学生,先筛选再并行"]}
-{"case_id": "T-L6-002", "level": "L6", "query": "根据八三班每个学生最近的学习情况,给每个人安排针对性练习。",
+ "forbidden_behavior": ["一开始对全班 30 人全部委派", "把 HomeworkAnalysis.attention 等同 weekly",
+                        "把多个学生混成一份诊断结果"],
+ "result_requirements": ["覆盖 4 个 weekly_attention_students,每个学生独立 StudentDiagnosisResult;不要求固定 Worker 数量或每批人数"]}
+{"case_id": "T-L7-001", "level": "L7", "query": "帮我把八三班这周数学学习情况完整复盘一下,并给出下周教学重点。",
  "snapshot_id": "teacher_eval_v1",
- "expected_behavior": {"execution_level": "L6", "required_tools": ["list_class_students"],
-  "required_subagents": ["practice-worker"]},
- "forbidden_behavior": ["根据 student_count 猜身份", "漏学生"],
- "result_requirements": ["完整覆盖 30 名学生,题目匹配目标知识点/难度"]}
-{"case_id": "T-L7-001", "level": "L7", "query": "帮我把八三班这周数学学习情况完整复盘,并生成下周分层练习。",
- "snapshot_id": "teacher_eval_v1",
- "expected_behavior": {"execution_level": "L7", "required_subagents": ["reviewer"]},
- "forbidden_behavior": ["普通任务默认触发 reviewer"],
- "result_requirements": ["大型方案交付前经 Reviewer 复核"]}
+ "expected_behavior": {"execution_level": "L7", "required_subagents": ["consistency-reviewer"]},
+ "forbidden_behavior": ["普通任务默认触发 consistency-reviewer"],
+ "result_requirements": ["完整 WeeklyClassReview 交付前经 Consistency Reviewer 复核"]}
 {"case_id": "T-L7-002", "level": "L7", "query": "分析一下张三最近数学学习情况。",
  "snapshot_id": "teacher_eval_v1",
  "expected_behavior": {"execution_level": "L2", "skills": ["student-diagnosis"]},
- "forbidden_behavior": ["task(subagent_type='reviewer')"],
- "result_requirements": ["普通单学生诊断不触发 Reviewer"]}
+ "forbidden_behavior": ["task(subagent_type=\"consistency-reviewer\")"],
+ "result_requirements": ["普通单学生诊断不触发 Consistency Reviewer"]}
 {"case_id": "T-MEM-001", "level": "L5", "query": "帮我看看今天这次作业。",
  "snapshot_id": "teacher_eval_v1",
  "memory": "以后做作业分析时先告诉我最值得课堂讲的三个问题,不用写太长。",

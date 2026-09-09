@@ -10,8 +10,13 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 logger = logging.getLogger("evals.behavior")
+
+# task(subagent_type="X") 形式的 forbidden 断言:只禁止指定类型的 Sub-Agent。
+# 兼容单引号/双引号与空格差异,不做通用表达式解析。
+_TASK_SUBAGENT_RE = re.compile(r"""task\(\s*subagent_type\s*=\s*['"]([^'"]+)['"]\s*\)""")
 
 
 class BehaviorChecker:
@@ -48,13 +53,19 @@ class BehaviorChecker:
                 issues.append(f"缺少 Skill: {sk}")
         # forbidden behavior(禁止出现的架构行为)
         for fb in forbidden:
-            if isinstance(fb, str):
-                if fb in ("task", "task Tool Call"):
-                    if any(subagent_types):
-                        issues.append(f"出现禁止行为: {fb}")
-                elif fb == "ask_clarification":
-                    if "ask_clarification" in tools_called:
-                        issues.append(f"出现禁止行为: {fb}")
+            if not isinstance(fb, str):
+                continue
+            if fb in ("task", "task Tool Call"):
+                if any(subagent_types):
+                    issues.append(f"出现禁止行为: {fb}")
+            elif fb == "ask_clarification":
+                if "ask_clarification" in tools_called:
+                    issues.append(f"出现禁止行为: {fb}")
+            else:
+                # task(subagent_type="X"):仅当该类型 Sub-Agent 实际出现时判失败
+                matched = _TASK_SUBAGENT_RE.search(fb)
+                if matched and matched.group(1) in subagent_types:
+                    issues.append(f"出现禁止行为: {fb}")
         return (not issues, issues)
 
 
