@@ -3,6 +3,7 @@
 用法(可观察,宪法 X):
     python -m evals.runtime.run --gate profile_algorithm
     python -m evals.runtime.run --gate analysis_calculation
+    python -m evals.runtime.run --gate cases          # 用例文件格式守门
 输出:每用例通过/失败 + 汇总(带耗时)。
 """
 
@@ -19,17 +20,23 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("evals")
 
 
-def _load_case_file(gate: str):
-    """加载门禁用例文件(带路径容错)。"""
-    import json
+def _cases_dir() -> str:
+    """定位用例目录(带路径容错:支持从仓库根或 evals 目录运行)。"""
     import os
 
-    path = f"evals/teacher_eval_v1/cases/{gate}.jsonl"
-    if not os.path.exists(path):
-        base = os.path.dirname(__file__)
-        path = os.path.join(base, "..", "teacher_eval_v1", "cases", f"{gate}.jsonl")
-    with open(path, encoding="utf-8") as fh:
-        return [json.loads(l) for l in fh if l.strip() and not l.strip().startswith("#")]
+    candidate = os.path.join("evals", "teacher_eval_v1", "cases")
+    if os.path.isdir(candidate):
+        return candidate
+    return os.path.join(os.path.dirname(__file__), "..", "teacher_eval_v1", "cases")
+
+
+def _load_case_file(gate: str):
+    """加载门禁用例文件(读取逻辑统一走 case_loader)。"""
+    import os
+
+    from evals.runtime.case_loader import load_case_file
+
+    return load_case_file(os.path.join(_cases_dir(), f"{gate}.jsonl"))
 
 
 # ---- Profile 门禁(直接调用实现) ----
@@ -147,6 +154,34 @@ def run_analysis_gate() -> list[tuple[str, bool, str]]:
     return results
 
 
+# ---- 用例格式门禁(不依赖 LLM) ----
+def run_cases_gate() -> list[tuple[str, bool, str]]:
+    """校验 cases/ 下全部用例文件可加载,且每条用例都有 case_id。
+
+    格式守门用例(007 诊断):core_cases.jsonl 曾因"跨行对象 + 读取逻辑不跳注释"
+    长期无法加载却无人发现。此门禁让同类格式漂移当场暴露。
+    """
+    import os
+
+    from evals.runtime.case_loader import load_case_file
+
+    cases_dir = _cases_dir()
+    results: list[tuple[str, bool, str]] = []
+    fnames = sorted(f for f in os.listdir(cases_dir) if f.endswith(".jsonl"))
+    for fname in fnames:
+        try:
+            cases = load_case_file(os.path.join(cases_dir, fname))
+        except Exception as exc:
+            results.append((fname, False, str(exc)))
+            continue
+        missing = [c.get("case_id") or "<缺 case_id>" for c in cases if not c.get("case_id")]
+        if missing:
+            results.append((fname, False, f"缺 case_id: {missing[:5]}"))
+        else:
+            results.append((fname, True, f"{len(cases)} 例"))
+    return results
+
+
 def run_gate(gate: str) -> bool:
     """运行指定门禁并汇总(返回是否全部通过)。"""
     t0 = time.time()
@@ -155,8 +190,10 @@ def run_gate(gate: str) -> bool:
         results = run_profile_gate()
     elif gate == "analysis_calculation":
         results = run_analysis_gate()
+    elif gate == "cases":
+        results = run_cases_gate()
     else:
-        logger.error("未知门禁: %s(可选 profile_algorithm / analysis_calculation)", gate)
+        logger.error("未知门禁: %s(可选 profile_algorithm / analysis_calculation / cases)", gate)
         return False
     passed = 0
     for cid, ok, err in results:
@@ -173,6 +210,6 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     gates = [a.split("--gate ")[1] for a in args if a.startswith("--gate ")]
     if not gates:
-        gates = ["profile_algorithm", "analysis_calculation"]
+        gates = ["profile_algorithm", "analysis_calculation", "cases"]
     ok = all(run_gate(g) for g in gates)
     sys.exit(0 if ok else 1)

@@ -74,19 +74,13 @@ def load_snapshot(base_dir: str = "evals/teacher_eval_v1") -> dict:
 
 
 def load_cases(base_dir: str = "evals/teacher_eval_v1") -> list[dict]:
-    """加载全部评测用例(cases/*.jsonl)。"""
+    """加载全部评测用例(cases/*.jsonl)。
+
+    读取逻辑统一走 evals.runtime.case_loader,避免与门禁侧实现漂移
+    (此前两份实现只有一份跳过 `#` 注释行,导致 core_cases.jsonl 无法加载)。
+    """
     import os
 
-    cases = []
-    case_dir = os.path.join(base_dir, "cases")
-    if not os.path.isdir(case_dir):
-        return cases
-    for fname in sorted(os.listdir(case_dir)):
-        if not fname.endswith(".jsonl"):
-            continue
-        with open(os.path.join(case_dir, fname), encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if line:
-                    cases.append(json.loads(line))
-    return cases
+    from evals.runtime.case_loader import load_case_dir
+
+    return load_case_dir(os.path.join(base_dir, "cases"))
