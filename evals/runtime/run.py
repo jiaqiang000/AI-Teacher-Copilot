@@ -1,10 +1,13 @@
 """Eval Runner:运行评测用例并对确定性门禁断言(参考文档 08 §3.3/3.4)。
 
 用法(可观察,宪法 X):
+    python -m evals.runtime.run                       # 跑默认组合(全部门禁)
     python -m evals.runtime.run --gate profile_algorithm
     python -m evals.runtime.run --gate analysis_calculation
     python -m evals.runtime.run --gate cases          # 用例文件格式守门
-输出:每用例通过/失败 + 汇总(带耗时)。
+    python -m evals.runtime.run --gate cases --gate profile_algorithm
+`--gate X` 与 `--gate=X` 两种写法都支持,可重复指定;不指定则跑默认组合。
+输出:每用例通过/失败 + 汇总(带耗时);未知门禁与缺失参数以退出码 2 报错。
 """
 
 from __future__ import annotations
@@ -18,6 +21,35 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
                     stream=sys.stderr)
 logger = logging.getLogger("evals")
+
+# 不指定 --gate 时运行的门禁组合
+DEFAULT_GATES = ("profile_algorithm", "analysis_calculation", "cases")
+KNOWN_GATES = frozenset(DEFAULT_GATES)
+
+
+def parse_gates(argv: list[str]) -> list[str]:
+    """解析 `--gate X` / `--gate=X` 参数,支持重复指定。
+
+    不指定时返回 DEFAULT_GATES。参数缺失或为空值时抛 ValueError,
+    由调用方转为退出码 2(避免静默回退到默认组合而掩盖调用错误)。
+    """
+    gates: list[str] = []
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--gate":
+            if index + 1 >= len(argv):
+                raise ValueError("--gate 缺少门禁名")
+            gates.append(argv[index + 1])
+            index += 2
+            continue
+        if arg.startswith("--gate="):
+            value = arg.split("=", 1)[1]
+            if not value:
+                raise ValueError("--gate= 缺少门禁名")
+            gates.append(value)
+        index += 1
+    return gates or list(DEFAULT_GATES)
 
 
 def _cases_dir() -> str:
@@ -207,9 +239,20 @@ def run_gate(gate: str) -> bool:
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    gates = [a.split("--gate ")[1] for a in args if a.startswith("--gate ")]
-    if not gates:
-        gates = ["profile_algorithm", "analysis_calculation", "cases"]
-    ok = all(run_gate(g) for g in gates)
-    sys.exit(0 if ok else 1)
+    try:
+        gates = parse_gates(sys.argv[1:])
+    except ValueError as exc:
+        logger.error("%s(用法: --gate <name>,可选 %s)",
+                     exc, " / ".join(DEFAULT_GATES))
+        sys.exit(2)
+
+    unknown = [g for g in gates if g not in KNOWN_GATES]
+    if unknown:
+        logger.error("未知门禁: %s(可选 %s)",
+                     ", ".join(unknown), " / ".join(DEFAULT_GATES))
+        sys.exit(2)
+
+    # 逐个执行而不是 all(生成器):all 会在首个失败处短路,
+    # 导致后面的门禁完全不跑,失败时看不到完整信息。
+    outcomes = [run_gate(gate) for gate in gates]
+    sys.exit(0 if all(outcomes) else 1)
