@@ -45,8 +45,17 @@ cd AI-Teacher-Copilot && make dev            # 或 uv run --project backend uvic
 # 前端
 cd frontend && npm install && npm run dev
 
-# 验证:GET /api/teacher-copilot/healthz → {"status":"ok","service":"teacher_copilot"}
+# 验证 Gateway 存活
+# GET http://127.0.0.1:8001/health → {"status":"healthy","service":"deer-flow-gateway"}
+
+# 验证教师业务 API(独立进程,业务接口直连与健康检查)
+cd AI-Teacher-Copilot/backend && uv run python -m uvicorn app.teacher_copilot.api.app:app --port 8100
+# GET http://127.0.0.1:8100/healthz → {"status":"ok","service":"teacher_copilot"}
 ```
+
+教师的 `/healthz` 注册在路由根部,经 Gateway 访问会被 Gateway 自身的 `/healthz` 遮蔽;
+`/api/teacher-copilot/healthz` 并不存在(会落到需登录的兜底路由返回 401)。
+因此教师健康检查请直接访问独立进程端口(8100)。
 
 ## 4. 配置合并
 
