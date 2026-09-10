@@ -48,14 +48,19 @@ cd frontend && npm install && npm run dev
 # 验证 Gateway 存活
 # GET http://127.0.0.1:8001/health → {"status":"healthy","service":"deer-flow-gateway"}
 
-# 验证教师业务 API(独立进程,业务接口直连与健康检查)
+# 验证教师路由已挂载(同一个 Gateway 进程即可)
+# GET http://127.0.0.1:8001/healthz → {"status":"ok","service":"teacher_copilot"}
+
+# 可选:教师业务 API 独立进程(业务接口直连、不经过 Gateway 时使用)
 cd AI-Teacher-Copilot/backend && uv run python -m uvicorn app.teacher_copilot.api.app:app --port 8100
 # GET http://127.0.0.1:8100/healthz → {"status":"ok","service":"teacher_copilot"}
 ```
 
-教师的 `/healthz` 注册在路由根部,经 Gateway 访问会被 Gateway 自身的 `/healthz` 遮蔽;
-`/api/teacher-copilot/healthz` 并不存在(会落到需登录的兜底路由返回 401)。
-因此教师健康检查请直接访问独立进程端口(8100)。
+教师路由的 `/healthz` 注册在其 router 根部,而 Gateway 以无前缀方式挂载该 router
+(`app/gateway/app.py` 的 `include_router(teacher_copilot_router)`),因此 Gateway 形态下
+`GET http://127.0.0.1:8001/healthz` 同样能拿到教师服务的健康状态;Gateway 自身的存活检查
+是另一个路径 `/health`,两者不冲突。原文档写的 `/api/teacher-copilot/healthz` 并不存在
+(该前缀下只有业务路由,健康检查不在其中),已按实测更正。
 
 ## 4. 配置合并
 
