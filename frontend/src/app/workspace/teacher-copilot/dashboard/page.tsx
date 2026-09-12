@@ -40,6 +40,12 @@ export default function DashboardPage() {
   const [profiles, setProfiles] = useState<
     Record<string, Awaited<ReturnType<typeof getClassProfile>>>
   >({});
+  // 画像 / 作业分析请求失败的对象(值为失败原因)。必须与"无数据"分开存:
+  // 否则一次请求失败会被显示成"该学科暂无数据""暂无数据",用假状态掩盖真问题
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
+  const [hwAnalysisErrors, setHwAnalysisErrors] = useState<
+    Record<string, string>
+  >({});
   const [homeworks, setHomeworks] = useState<
     Awaited<ReturnType<typeof getTeacherHomeworks>>
   >([]);
@@ -67,43 +73,48 @@ export default function DashboardPage() {
       .then(async ([classList, homeworkList]) => {
         setClasses(classList);
         setHomeworks(homeworkList);
-        const profileEntries = await Promise.all(
+        // 逐班取画像:成功与失败分别落账
+        const nextProfiles: Record<
+          string,
+          Awaited<ReturnType<typeof getClassProfile>>
+        > = {};
+        const nextProfileErrors: Record<string, string> = {};
+        await Promise.all(
           classList.map(async (classSummary) => {
             try {
-              return [
+              nextProfiles[classSummary.class_id] = await getClassProfile(
                 classSummary.class_id,
-                await getClassProfile(classSummary.class_id, subject),
-              ] as const;
-            } catch {
-              return null;
+                subject,
+              );
+            } catch (e) {
+              nextProfileErrors[classSummary.class_id] = (e as Error).message;
             }
           }),
         );
-        setProfiles(
-          Object.fromEntries(
-            profileEntries.filter(
-              (entry): entry is NonNullable<typeof entry> => entry !== null,
-            ),
-          ),
-        );
+        setProfiles(nextProfiles);
+        setProfileErrors(nextProfileErrors);
         // 工作台只展示前五份作业,分别复用既有作业分析接口,避免把第一份数据误套到其他卡片。
+        // 同样把失败单独落账,不折成"暂无数据"
         const recentHomeworks = homeworkList.slice(0, 5);
-        const analysisEntries = await Promise.all(
+        const nextAnalyses: Record<
+          string,
+          Awaited<ReturnType<typeof getHomeworkAnalysis>> | null
+        > = {};
+        const nextHwErrors: Record<string, string> = {};
+        await Promise.all(
           recentHomeworks.map(async (homework) => {
             try {
-              return [
+              nextAnalyses[homework.homework_id] = await getHomeworkAnalysis(
                 homework.homework_id,
-                await getHomeworkAnalysis(
-                  homework.homework_id,
-                  homework.class_id,
-                ),
-              ] as const;
-            } catch {
-              return [homework.homework_id, null] as const;
+                homework.class_id,
+              );
+            } catch (e) {
+              nextHwErrors[homework.homework_id] = (e as Error).message;
             }
           }),
         );
-        setHwAnalyses(Object.fromEntries(analysisEntries));
+        setHwAnalyses(nextAnalyses);
+        setHwAnalysisErrors(nextHwErrors);
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
@@ -118,11 +129,15 @@ export default function DashboardPage() {
   ).length;
   const firstProfile = classes[0] ? profiles[classes[0].class_id] : undefined;
   // 多对象页面的空状态:按班级卡片各自判断;全部班级都无数据时另给一处整体提示
-  // (班级列表本身与学科无关,保留卡片以便继续进入某个班级)
-  const classesWithData = classes.filter(
-    (item) => (profiles[item.class_id]?.overview.active_student_count ?? 0) > 0,
+  // (班级列表本身与学科无关,保留卡片以便继续进入某个班级)。
+  // 加载失败的班级不计入"无数据",免得整页提示被一次请求失败触发
+  const emptyClassCount = classes.filter(
+    (item) =>
+      (profiles[item.class_id]?.overview.active_student_count ?? 0) === 0 &&
+      !profileErrors[item.class_id],
   ).length;
-  const noClassHasData = classes.length > 0 && classesWithData === 0;
+  const noClassHasData =
+    classes.length > 0 && emptyClassCount === classes.length;
 
   return (
     <div className="min-h-full w-full">
@@ -224,6 +239,7 @@ export default function DashboardPage() {
                           (profiles[classSummary.class_id]?.overview
                             .active_student_count ?? 0) > 0
                         }
+                        loadError={profileErrors[classSummary.class_id]}
                         profile={profiles[classSummary.class_id]}
                         labels={t.teacherCopilot}
                       />
@@ -254,6 +270,7 @@ export default function DashboardPage() {
                           hwAnalyses[homework.homework_id]?.completion
                             ?.completion_rate ?? null
                         }
+                        loadError={hwAnalysisErrors[homework.homework_id]}
                         labels={t.teacherCopilot}
                       />
                     ))
@@ -291,6 +308,7 @@ function ClassCard({
   count,
   subject,
   hasData,
+  loadError,
   profile,
   labels,
 }: {
@@ -299,6 +317,7 @@ function ClassCard({
   count: string;
   subject: Subject;
   hasData: boolean;
+  loadError?: string;
   profile?: Awaited<ReturnType<typeof getClassProfile>>;
   labels: TeacherCopilotLabels;
 }) {
@@ -315,9 +334,13 @@ function ClassCard({
       <div className="text-muted-foreground text-xs">
         {count} · {subjectLabel(subject, labels)}
       </div>
-      {/* 该班在所选学科下无数据时,在本卡片内提示,而不是留白 */}
-      <div className={hasData ? "mt-1 text-sm" : "text-muted-foreground mt-1 text-sm"}>
-        {hasData ? (
+      {/* 三态互斥:加载失败 > 有数据 > 该学科暂无数据;失败不得显示成"暂无数据" */}
+      <div className="mt-1 text-sm">
+        {loadError ? (
+          <span className="text-red-600" title={loadError}>
+            画像加载失败
+          </span>
+        ) : hasData ? (
           <>
             {trend ? trendLabel(trend, labels) : labels.unknownTrend}
             {profile?.overview.avg_score_rate != null
@@ -326,7 +349,7 @@ function ClassCard({
             {weak ? ` · ${weak}` : ""}
           </>
         ) : (
-          "该学科暂无数据"
+          <span className="text-muted-foreground">该学科暂无数据</span>
         )}
       </div>
     </Link>
@@ -336,10 +359,12 @@ function ClassCard({
 function HomeworkCard({
   homework,
   completion,
+  loadError,
   labels,
 }: {
   homework: Awaited<ReturnType<typeof getTeacherHomeworks>>[number];
   completion: number | null;
+  loadError?: string;
   labels: TeacherCopilotLabels;
 }) {
   return (
@@ -349,9 +374,16 @@ function HomeworkCard({
     >
       <div className="font-medium">{homework.name}</div>
       <div className="text-muted-foreground text-xs">
-        {completion != null
-          ? `完成 ${Math.round(completion * 100)}%`
-          : "暂无数据"}
+        {/* 分析请求失败与"确实没有完成率数据"是两回事,不得都写成"暂无数据" */}
+        {loadError ? (
+          <span className="text-red-600" title={loadError}>
+            分析加载失败
+          </span>
+        ) : completion != null ? (
+          `完成 ${Math.round(completion * 100)}%`
+        ) : (
+          "暂无数据"
+        )}
         {` · ${homework.class_name} · ${statusLabel(homework.status, labels)}`}
       </div>
     </Link>

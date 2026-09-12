@@ -26,6 +26,9 @@ export default function ClassesPage() {
   const subject = useSubjectParam();
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [profiles, setProfiles] = useState<Record<string, ClassProfile>>({});
+  // 画像请求失败的班级(值为失败原因)。必须与"该学科暂无数据"分开存:
+  // 否则一次请求失败会被显示成"这个班在这个学科没有数据",用假状态掩盖真问题
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -33,26 +36,24 @@ export default function ClassesPage() {
     setLoading(true);
     setError("");
     setProfiles({});
+    setProfileErrors({});
     getTeacherClasses()
       .then(async (classList) => {
         setClasses(classList);
-        // 逐班取画像只为判断该学科下有无数据;取不到就按"无数据"处理
-        const entries = await Promise.all(
+        // 逐班取画像只为判断该学科下有无数据;成功与失败分别落账,不混为一谈
+        const nextProfiles: Record<string, ClassProfile> = {};
+        const nextErrors: Record<string, string> = {};
+        await Promise.all(
           classList.map(async (item) => {
             try {
-              return [item.class_id, await getClassProfile(item.class_id, subject)] as const;
-            } catch {
-              return null;
+              nextProfiles[item.class_id] = await getClassProfile(item.class_id, subject);
+            } catch (e) {
+              nextErrors[item.class_id] = (e as Error).message;
             }
           }),
         );
-        setProfiles(
-          Object.fromEntries(
-            entries.filter(
-              (entry): entry is NonNullable<typeof entry> => entry !== null,
-            ),
-          ),
-        );
+        setProfiles(nextProfiles);
+        setProfileErrors(nextErrors);
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
@@ -61,9 +62,13 @@ export default function ClassesPage() {
   const hasData = (classId: string) =>
     (profiles[classId]?.overview.active_student_count ?? 0) > 0;
   // 多对象页面:每个班级卡片各自判断;全部班级都无数据时另给一处整体提示,
-  // 但保留卡片(班级列表与学科无关,仍需可进入)
+  // 但保留卡片(班级列表与学科无关,仍需可进入)。
+  // 加载失败的班级不计入"无数据",免得整页提示被一次请求失败触发
   const noClassHasData =
-    classes.length > 0 && classes.every((item) => !hasData(item.class_id));
+    classes.length > 0 &&
+    classes.every(
+      (item) => !hasData(item.class_id) && !profileErrors[item.class_id],
+    );
 
   return (
     <div className="min-h-full w-full">
@@ -97,6 +102,7 @@ export default function ClassesPage() {
                 classSummary={classSummary}
                 subject={subject}
                 hasData={hasData(classSummary.class_id)}
+                loadError={profileErrors[classSummary.class_id]}
                 labels={t.teacherCopilot}
               />
             ))}
@@ -111,11 +117,13 @@ function ClassCard({
   classSummary,
   subject,
   hasData,
+  loadError,
   labels,
 }: {
   classSummary: ClassSummary;
   subject: Subject;
   hasData: boolean;
+  loadError?: string;
   labels: ReturnType<typeof useI18n>["t"]["teacherCopilot"];
 }) {
   return (
@@ -131,8 +139,12 @@ function ClassCard({
       <p className="text-muted-foreground mt-1 text-sm">
         {classSummary.student_count} 名学生 · {subjectLabel(subject, labels)}
       </p>
-      {/* 该班在所选学科下无数据时,在本卡片内提示,而不是留白 */}
-      {!hasData && (
+      {/* 三态互斥:加载失败 > 有数据 > 该学科暂无数据;失败不得显示成"暂无数据" */}
+      {loadError ? (
+        <p className="mt-1 text-sm text-red-600" title={loadError}>
+          画像加载失败
+        </p>
+      ) : hasData ? null : (
         <p className="text-muted-foreground mt-1 text-sm">该学科暂无数据</p>
       )}
     </Link>
