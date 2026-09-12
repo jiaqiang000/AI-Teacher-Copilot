@@ -1,10 +1,11 @@
 "use client"
 // 学生作业页(对照 Figma 07:完成进度 + 每题作答/批改状态 + 截止时间)
 // 真实数据:GET /homework/{id}/for-student(题目 + 我的提交状态)
-import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
+
 import { getStudentHomework } from "@/core/teacher-copilot/api"
 
 const HW_ID = "hw_004"
@@ -49,7 +50,7 @@ export default function StudentHomeworkPage() {
   return (
     <div className="p-8 space-y-6 max-w-3xl">
       <header>
-        <h1 className="text-2xl font-bold">{data?.homework.name || "我的作业"}</h1>
+        <h1 className="text-2xl font-bold">{data?.homework.name ?? "我的作业"}</h1>
         <p className="text-muted-foreground text-sm">
           学生端 · {total} 道题
           {deadline
