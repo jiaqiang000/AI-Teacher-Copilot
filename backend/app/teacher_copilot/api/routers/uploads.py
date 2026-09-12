@@ -54,7 +54,8 @@ async def ocr_recognize(body: dict):
     """题目图 OCR 识别(回填出题文本)。body: {image_url}(公网可下载链接)。
 
     学生作答批改内部自带 OCR;本端点服务"教师上传题目图 → 回填"场景,
-    与 OcrClient 共用智谱 GLM-OCR(未配置密钥时返回 mock)。
+    与 OcrClient 共用智谱 GLM-OCR;未配置密钥时显式失败(OCR_NOT_CONFIGURED),
+    不再返回占位识别文本。
     """
     try:
         image_url = body.get("image_url") or ""

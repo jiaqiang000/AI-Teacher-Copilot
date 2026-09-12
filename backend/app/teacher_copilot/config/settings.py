@@ -4,7 +4,7 @@
 - 数据库:默认 SQLite 文件(零外部依赖),可切 MySQL 异步方言
 - LLM:DeepSeek Anthropic Messages API(base url https://api.deepseek.com/anthropic,
   model deepseek-v4-flash);数学 easy/medium 与 hard 均用同一模型(按用户提供的密钥)
-- OCR:智谱 GLM-OCR(zai-sdk);密钥未配置时由调用方按宪法 VII 上报并使用 mock
+- OCR:智谱 GLM-OCR(zai-sdk);密钥未配置时显式失败(抛 OcrNotConfigured,008 FR-004)
 - 评测:可选 Langfuse(不强制)
 
 真实密钥由用户提供(2026-09-02),经环境变量注入,不硬编码在代码中。
@@ -61,16 +61,6 @@ class AppConfig:
 
     # ----- 评测(可选) -----
     langfuse_enabled: bool = field(default_factory=lambda: _env("LANGFUSE_ENABLED", "0") == "1")
-
-    @property
-    def has_real_llm(self) -> bool:
-        """是否已配置真实 LLM 密钥(否则批改走 mock 退路)。"""
-        return bool(self.llm_api_key)
-
-    @property
-    def has_real_ocr(self) -> bool:
-        """OCR 密钥是否已配置(未配置时 OcrClient 走 mock)。"""
-        return bool(self.ocr_api_key)
 
 
 # 模块级单例:各模块统一从 get_config() 获取,避免重复解析环境变量

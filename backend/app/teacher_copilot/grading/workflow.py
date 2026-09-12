@@ -126,9 +126,11 @@ async def run_grading_workflow(submission_id: str) -> None:
             assembled = GradingResultAssembler.assemble_english(raw, subject="english", question_type=question.question_type)
 
         # 3) Taxonomy 校验并补齐 name/type
+        # 诊断缺失时传空对象(而非在组装器补默认空诊断),让校验器的必需字段判定
+        # 报出准确的"缺少必需字段",而不是被默认值掩盖成"没有知识点/错误"(008 FR-002)
         async with TaxonomyValidator() as validator:
             assembled["diagnosis"] = await validator.validate_diagnosis(
-                subject=question.subject, diagnosis=assembled.get("diagnosis", {})
+                subject=question.subject, diagnosis=assembled.get("diagnosis") or {}
             )
         logger.info("[%s] Taxonomy 校验完成: kp=%d err=%d", submission_id,
                     len(assembled["diagnosis"].get("knowledge_points", [])),

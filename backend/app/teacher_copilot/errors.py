@@ -96,3 +96,25 @@ class GradingOutputInvalid(TcError):
 
     code = "GRADING_OUTPUT_INVALID"
     http_status = 422
+
+
+class ModelNotConfigured(TcError):
+    """模型密钥未配置:显式失败,不返回可被下游解析的占位结果。
+
+    独立错误码(而非 INTERNAL_ERROR)用于让"未配置密钥"与网络异常、
+    模型返回格式错误等其他失败区分开(HTTP 503 = 服务未就绪)。
+    """
+
+    code = "MODEL_NOT_CONFIGURED"
+    http_status = 503
+
+
+class OcrNotConfigured(TcError):
+    """识别(OCR)密钥未配置:显式失败,不返回硬编码的占位识别文本。
+
+    独立错误码理由同 ModelNotConfigured;占位文本刻意对齐过评测金标准,
+    返回它会让学生作答看起来"识别成功且答案正确"。
+    """
+
+    code = "OCR_NOT_CONFIGURED"
+    http_status = 503

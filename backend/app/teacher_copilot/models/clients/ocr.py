@@ -4,7 +4,8 @@ SDK:zai-sdk(ZhipuAiClient.layout_parsing.create)。
 - file 参数支持 URL 或 base64 编码图片(≤10MB)
 - 响应:md_results + layout_details(List[List[LayoutDetail]])
   LayoutDetail 字段:index/label/bbox_2d/content/height/width
-- 密钥未配置时走 mock(返回单 Block 结构),保证本地链路可演示
+- 密钥未配置时**显式失败**(抛 OcrNotConfigured),不再返回硬编码的占位识别文本:
+  该文本刻意对齐了评测金标准(含"移项"与 2x+4=8),返回它会让假数据看起来"正确"(008 FR-004)
 
 【待办】公网图片 URL(2026-09-02 用户确认方案):智谱服务器仅能访问公网
 可下载 URL;本地文件/base64 对简单图返回空。学生上传图片须先传至
@@ -14,13 +15,17 @@ SDK:zai-sdk(ZhipuAiClient.layout_parsing.create)。
 from __future__ import annotations
 
 import base64
+import logging
 from typing import Any
 
 from app.teacher_copilot.config.settings import get_config
+from app.teacher_copilot.errors import OcrNotConfigured
+
+logger = logging.getLogger("teacher_copilot.ocr")
 
 
 class OcrClient:
-    """OCR 客户端(OCR_API_KEY 未配置 → mock 结果)。"""
+    """OCR 客户端(OCR_API_KEY 未配置 → 抛 OcrNotConfigured)。"""
 
     def __init__(self) -> None:
         self._cfg = get_config()
@@ -38,9 +43,19 @@ class OcrClient:
 
         image_path: 本地文件路径(转 base64 data URL);
         image_url: 提供时优先使用远程 URL(与参考设计一致)。
+
+        未配置密钥时显式失败(008 FR-004):禁止返回占位识别文本,
+        否则下游会拿到"结构完整、内容正确"的假识别结果。
         """
         if not self._cfg.ocr_api_key:
-            return self._mock_recognize()
+            logger.error(
+                "OCR 未配置密钥,拒绝识别: model=%s, image_path=%s, image_url=%s;"
+                " 请配置 TC_OCR_API_KEY 后重试",
+                self._cfg.ocr_model, image_path, image_url,
+            )
+            raise OcrNotConfigured(
+                f"识别未配置密钥(TC_OCR_API_KEY),无法完成识别;model={self._cfg.ocr_model}"
+            )
         if image_url:
             file_arg = image_url
         else:
@@ -60,27 +75,6 @@ class OcrClient:
         return {
             "md_results": resp.md_results or "",
             "layout_details": blocks,
-        }
-
-    def _mock_recognize(self) -> dict[str, Any]:
-        """mock 识别:返回单 Block 的公式文本与占位坐标(与真实结构一致)。"""
-        return {
-            "md_results": (
-                "[Block 1 | text]\nAnswer: Let x be the unknown.\n\n"
-                "[Block 2 | formula]\n$$ 2x + 4 = 8 $$\n\n"
-                "[Block 3 | text]\nThen, by transposition,\n\n"
-                "[Block 4 | formula]\n$$ x = 2 $$\n"
-            ),
-            "layout_details": [
-                {"index": 1, "label": "text", "content": "Answer: Let x be the unknown.",
-                 "bbox2d": [0, 0, 100, 40], "width": 100, "height": 600},
-                {"index": 2, "label": "formula", "content": "$$ 2x + 4 = 8 $$",
-                 "bbox2d": [0, 40, 100, 80], "width": 100, "height": 600},
-                {"index": 3, "label": "text", "content": "Then, by transposition,",
-                 "bbox2d": [0, 80, 100, 120], "width": 100, "height": 600},
-                {"index": 4, "label": "formula", "content": "$$ x = 2 $$",
-                 "bbox2d": [0, 120, 100, 160], "width": 100, "height": 600},
-            ],
         }
 
 

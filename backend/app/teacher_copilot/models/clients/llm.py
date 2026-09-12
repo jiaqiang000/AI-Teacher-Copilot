@@ -1,10 +1,13 @@
-"""LLM 客户端:DeepSeek Anthropic Messages API + mock 退路。
+"""LLM 客户端:DeepSeek Anthropic Messages API。
 
 按用户实际接入(2026-09-02):
 - base url: https://api.deepseek.com/anthropic
 - 协议:Anthropic Messages (/v1/messages)
 - 模型:deepseek-v4-flash(数学 easy/medium/hard 与英语作文均使用,单一密钥)
-密钥未配置时走 mock(返回预设确定性输出),保证本地链路可跑通。
+
+密钥未配置时**显式失败**(抛 ModelNotConfigured),不再返回占位 JSON:
+占位结果可被 generate_json 当作合法 JSON 解析并一路下传,最终存在落进
+业务数据表的可能(008 FR-001)。
 所有真实调用记录"开始/完成/耗时"(宪法 IX/X)。
 """
 
@@ -18,6 +21,7 @@ import time
 import httpx
 
 from app.teacher_copilot.config.settings import get_config
+from app.teacher_copilot.errors import ModelNotConfigured
 
 logger = logging.getLogger("teacher_copilot.llm")
 
@@ -74,15 +78,26 @@ def _parse_json_robust(text: str) -> dict:
 
 
 class LlmClient:
-    """统一 LLM 客户端(配置了密钥 → 云端 Anthropic Messages;未配置 → mock)。"""
+    """统一 LLM 客户端(配置了密钥 → 云端 Anthropic Messages;未配置 → 显式失败)。"""
 
     def __init__(self) -> None:
         self._cfg = get_config()
 
     async def generate(self, *, prompt: str, system: str = "") -> str:
-        """调用模型生成文本(Anthropic Messages 协议)。"""
+        """调用模型生成文本(Anthropic Messages 协议)。
+
+        未配置密钥时显式失败:禁止返回占位 JSON——它会被 generate_json 当作
+        合法 JSON 解析并下传,使"假结果冒充真实结果"(008 FR-001、FR-003)。
+        """
         if not self._cfg.llm_api_key:
-            return '{"_mock": true}'
+            logger.error(
+                "LLM 未配置密钥,拒绝生成: model=%s, base=%s, prompt_len=%d;"
+                " 请配置 TC_LLM_API_KEY 后重试",
+                self._cfg.llm_model, self._cfg.llm_api_base, len(prompt),
+            )
+            raise ModelNotConfigured(
+                f"模型未配置密钥(TC_LLM_API_KEY),无法完成生成;model={self._cfg.llm_model}"
+            )
         return await self._generate_anthropic(prompt, system)
 
     async def generate_json(self, *, model_kind: str = "strong", prompt: str, system: str = "") -> dict:
@@ -129,8 +144,3 @@ class LlmClient:
         if not text and data.get("stop_reason") == "max_tokens":
             logger.warning("LLM 响应被 max_tokens 截断(只返回 thinking),返回空触发重试")
         return text
-
-    @property
-    def is_mock(self) -> bool:
-        """当前是否处于 mock 模式(无真实密钥)。"""
-        return not self._cfg.llm_api_key

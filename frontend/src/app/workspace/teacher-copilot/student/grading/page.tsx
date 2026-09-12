@@ -40,6 +40,11 @@ export default function StudentGradingPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [pageError, setPageError] = useState("");
+  // 后端记录的批改失败详情:直接展示后端内容,不做失败码到友好文案的映射(FR-004a)
+  const [failure, setFailure] = useState<{
+    code: string | null;
+    message: string | null;
+  } | null>(null);
 
   const refreshResult = useCallback(async (sid: string) => {
     try {
@@ -54,6 +59,7 @@ export default function StudentGradingPage() {
   const loadView = useCallback(async () => {
     setPageError("");
     setError("");
+    setFailure(null);
     setQuestion(null);
     if (!homeworkId || !questionId) {
       setPageError("作业和题目不能为空");
@@ -95,6 +101,10 @@ export default function StudentGradingPage() {
         const sub = await getSubmission(currentSubmissionId);
         setStatus(sub.status);
         setStage(sub.current_stage);
+        // 失败详情取自后端已存字段,替换写死的通用提示(FR-004a)
+        if (sub.status === "FAILED") {
+          setFailure({ code: sub.error_code, message: sub.error_message });
+        }
         if (sub.status === "SUCCEEDED")
           await refreshResult(currentSubmissionId);
       } catch {
@@ -104,6 +114,25 @@ export default function StudentGradingPage() {
     const timer = setInterval(() => void pollSubmission(), 3000);
     return () => clearInterval(timer);
   }, [submissionId, status, refreshResult]);
+
+  // 刷新后恢复的历史失败提交不会进入轮询,单独补拉一次失败详情(FR-004a)
+  useEffect(() => {
+    if (!submissionId || status !== "FAILED" || failure) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const sub = await getSubmission(submissionId);
+        if (!cancelled) {
+          setFailure({ code: sub.error_code, message: sub.error_message });
+        }
+      } catch {
+        /* 取不到详情时只显示“批改失败”,不编造失败原因 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [submissionId, status, failure]);
 
   async function handleUpload(file: File) {
     if (!homeworkId || question?.question_id !== questionId) {
@@ -125,6 +154,7 @@ export default function StudentGradingPage() {
       setStatus(res.status);
       setStage(res.current_stage);
       setResult(null);
+      setFailure(null);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -138,6 +168,10 @@ export default function StudentGradingPage() {
       : STAGE_KEYS.findIndex((key) => key === stage);
   const isTerminal = status === "SUCCEEDED" || status === "FAILED";
   const isRunning = !isTerminal;
+  // 失败详情直接拼接后端记录的内容(code/message),不建立文案映射表(FR-004a)
+  const failureText = failure
+    ? [failure.code, failure.message].filter(Boolean).join(":")
+    : "";
 
   return (
     <div className="max-w-3xl space-y-5 p-4 sm:p-8">
@@ -242,7 +276,7 @@ export default function StudentGradingPage() {
               </ul>
               {status === "FAILED" && (
                 <p className="mt-2 text-sm text-red-600">
-                  批改失败,请上传重试。
+                  {failureText ? `批改失败：${failureText}` : "批改失败"}
                 </p>
               )}
             </section>

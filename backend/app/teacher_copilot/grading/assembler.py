@@ -76,7 +76,9 @@ class GradingResultAssembler:
                 "final_answer": output.get("final_answer"),
                 "steps": steps,
             },
-            "diagnosis": output.get("diagnosis", {"knowledge_points": [], "errors": []}),
+            # 不在此处补默认空诊断(008 FR-002):一旦补上,"模型没给诊断"就变成
+            # "学生没有任何知识点/错误",校验层再也看不到"缺字段"这一事实而放行。
+            "diagnosis": output.get("diagnosis"),
             "feedback": output.get("feedback", {"summary": "", "strengths": [], "improvements": []}),
             "english_essay_detail": None,
             "execution_meta": {"route": "math_strong_model"},
@@ -109,7 +111,9 @@ class GradingResultAssembler:
                 "language_errors": detail.get("language_errors", []),
                 "evidence": evidence,
             },
-            "diagnosis": output.get("diagnosis", {"knowledge_points": [], "errors": []}),
+            # 不在此处补默认空诊断(008 FR-002):一旦补上,"模型没给诊断"就变成
+            # "学生没有任何知识点/错误",校验层再也看不到"缺字段"这一事实而放行。
+            "diagnosis": output.get("diagnosis"),
             "feedback": {
                 "summary": feedback.get("summary", ""),
                 "strengths": feedback.get("strengths", []),
