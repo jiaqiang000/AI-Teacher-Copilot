@@ -319,15 +319,16 @@ function ResultView({
       </div>
       {/* 历史批改里 summary 可能为空(当时数学 prompt 没要求它),显式说明而不是留白行 */}
       <p className="mt-2 text-sm">{result.feedback.summary || "暂无评语"}</p>
-      {/* 优点 / 改进建议:后端一直有这两个字段,此前界面从未展示(008 T040) */}
-      {result.feedback.strengths.length > 0 && (
+      {/* 优点 / 改进建议:后端一直有这两个字段,此前界面从未展示(008 T040)。
+          按"可能不完整"读:历史数据里存在 feedback={} 的行,直接 .length 会打崩页面(008 T044) */}
+      {(result.feedback.strengths ?? []).length > 0 && (
         <p className="text-muted-foreground mt-1 text-xs">
-          优点:{result.feedback.strengths.join(";")}
+          优点:{(result.feedback.strengths ?? []).join(";")}
         </p>
       )}
-      {result.feedback.improvements.length > 0 && (
+      {(result.feedback.improvements ?? []).length > 0 && (
         <p className="text-muted-foreground mt-1 text-xs">
-          改进建议:{result.feedback.improvements.join(";")}
+          改进建议:{(result.feedback.improvements ?? []).join(";")}
         </p>
       )}
       {result.math_detail && (

@@ -28,8 +28,10 @@ export interface Score {
 
 export interface Feedback {
   summary: string
-  strengths: string[]
-  improvements: string[]
+  // 接口层已归一(缺失时补空数组),但历史数据与上游回归都可能给出不完整形状,
+  // 标为可选以强制调用方处理"可能没有"的情况(008 T044)
+  strengths?: string[]
+  improvements?: string[]
 }
 
 export interface KnowledgePoint {

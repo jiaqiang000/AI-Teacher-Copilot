@@ -1,14 +1,15 @@
-"""Teacher Copilot 批改失败路径测试(008 FR-002;SC-001/SC-002/SC-004)。
+"""Teacher Copilot 批改失败路径与结果契约测试(008 FR-002;SC-001/SC-002/SC-004)。
 
-覆盖三件事:
+覆盖三类:
 
 1. 未配置密钥时模型与识别客户端抛专用错误,不再返回可被下游解析的占位结果;
-2. 校验层拒绝"必需字段缺失或类型不对"的诊断(占位输出的形态),但放行合法的空数组;
-3. 未配置密钥时跑一次真实批改主流程 → 提交显式 FAILED,且批改结果表无新增行。
+2. 批改链路的显式失败:空识别不得继续批改、满分必须为正、必需输出(feedback/diagnosis)
+   不得被默认值掩盖;
+3. 结果形状契约:接口出口把历史遗留的不完整 ``feedback`` 归一成稳定形状,
+   避免前端在真实数据上崩溃。
 
 不访问外部 LLM / OCR / OSS:通过清空 ``TC_LLM_API_KEY`` 与 ``TC_OCR_API_KEY``
-模拟"未配置",并预置一条 OcrResult 走批改流程的"幂等复用"分支,使流程能推进
-到模型调用那一步,从而验证模型侧的显式失败。
+模拟"未配置",并预置 OcrResult 走批改流程的"幂等复用"分支。
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
 
+from app.teacher_copilot.api.routers.submissions import grading_result
 from app.teacher_copilot.config import settings
 from app.teacher_copilot.db import models  # noqa: F401  # 确保所有业务表注册
 from app.teacher_copilot.db.engine import create_all, dispose_db, get_session, init_db
@@ -45,6 +47,8 @@ HOMEWORK_ID = "hw_failpath"
 EMPTY_OCR_SUBMISSION_ID = "sub_failpath_empty_ocr"
 # 仅用于直接验证 _persist_ocr 状态判定,不预置 OcrResult
 PERSIST_SUBMISSION_ID = "sub_failpath_persist"
+# 历史形状:已存在 GradingResult 且 feedback 为空对象 {}。用于验证接口出口归一
+CONTRACT_SUBMISSION_ID = "sub_failpath_contract"
 
 
 @pytest.fixture()
@@ -110,6 +114,21 @@ async def grading_database(tmp_path_factory: pytest.TempPathFactory):
             question_id=QUESTION_ID, homework_id=HOMEWORK_ID,
             image_url="https://example.com/persist.png",
             status="PENDING", current_stage="QUEUED",
+        ))
+        # 历史形状:feedback 为空对象 {},用于验证接口出口把它归一成完整形状
+        session.add(Submission(
+            submission_id=CONTRACT_SUBMISSION_ID, student_id="stu_failpath_contract",
+            question_id=QUESTION_ID, homework_id=HOMEWORK_ID,
+            image_url="https://example.com/contract.png",
+            status="SUCCEEDED", current_stage="COMPLETED",
+        ))
+        session.add(GradingResult(
+            grading_result_id=f"gr_{CONTRACT_SUBMISSION_ID}",
+            submission_id=CONTRACT_SUBMISSION_ID,
+            subject="math", question_type="calculation", difficulty="easy",
+            score_earned=8.0, score_max=10.0, score_rate=0.8,
+            feedback={}, math_detail=None, english_essay_detail=None,
+            execution_meta={},
         ))
         await session.commit()
 
@@ -373,3 +392,22 @@ async def test_create_question_rejects_non_positive_max_score(
             )
 
     assert "满分" in exc.value.message
+
+
+# ---------------------------------------------------------------- 结果形状契约(T044)
+
+
+@pytest.mark.asyncio
+async def test_grading_result_endpoint_normalizes_empty_feedback(grading_database):
+    """接口出口必须把不完整的 feedback 归一成稳定形状(008 T044)。
+
+    真实库里 1089/1092 条 ``feedback`` 是空对象 ``{}``:前端若按"三字段必有"读
+    ``strengths.length``,会在这些行上抛 TypeError 把批改页打崩。
+    """
+    response = await grading_result(CONTRACT_SUBMISSION_ID)
+
+    assert response["data"]["feedback"] == {
+        "summary": "",
+        "strengths": [],
+        "improvements": [],
+    }

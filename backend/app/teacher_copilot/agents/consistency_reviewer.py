@@ -12,6 +12,11 @@ task(subagent_type="consistency-reviewer") 做事实与语义一致性审核:
 
 不负责:判断教学法优劣、重新生成整份 WeeklyClassReview、查题库生成练习、发布 Homework。
 普通事实查询 / 单学生诊断 / 普通作业分析不触发(参考文档 08 T-L7-002)。
+
+**是否委派由 Lead Agent 按需判断,代码里没有确定性闸门**:此处原本有一个
+``should_review(plan)`` 函数,但全仓无人调用,其判据 ``plan["scope"]`` /
+``plan["explicit_review"]`` 也没有任何产出方——留着会让人误以为"审核由该闸门把关"
+(实际从不执行),已于 008 T045 删除。
 """
 
 from __future__ import annotations
@@ -39,12 +44,3 @@ CONSISTENCY_REVIEWER_PROMPT = """你是班级周度复盘一致性审核子智�
 5. StudentDiagnosisResult 与 Profile / History 一致性
 6. next_week_teaching_focus 是否对应实际发现的问题
 输出:{"status": "PASS|NEEDS_REVISION", "issues": [{"code": "...", "target": "...", "reason": "...", "evidence": "..."}]}"""
-
-
-def should_review(plan: dict) -> bool:
-    """判定是否需要 Consistency Reviewer(按需启动,不默认所有任务审核)。
-
-    参考文档 06-07 §16.4:仅完整班级周度复盘或教师明确要求审核的任务需要审核。
-    """
-    scope = plan.get("scope", [])
-    return bool(plan.get("explicit_review", False)) or "weekly_review" in scope

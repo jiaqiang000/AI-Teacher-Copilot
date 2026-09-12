@@ -36,7 +36,9 @@
 - 仅当任务存在**真实并行 / 上下文隔离 / 独立审核**收益时,才用 task 委派
   Sub-Agent(诊断 Worker / 一致性审核 Consistency Reviewer)。
 - 普通周度复盘、普通学生诊断、单份作业讲评都**不**拆分 Agent;完整班级周度复盘
-  可按需委派 consistency-reviewer 做事实与语义一致性审核。
+  可按需委派 consistency-reviewer 做事实与语义一致性审核。该委派由你**按需判断**:
+  代码里**没有**确定性闸门(原 `should_review()` 无人调用、判据也无人产出,
+  已于 008 T045 删除)。
 - 一个 Diagnosis Worker 可以接收多个 student_id,但必须逐个执行 student-diagnosis
   SOP 并分别返回独立的 StudentDiagnosisResult,不得把多个学生混成一份诊断。
 
