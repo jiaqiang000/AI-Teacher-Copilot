@@ -103,7 +103,7 @@ thinking 占满 `max_tokens`,text 块被截断为空。
 ## 7. 宪法遵循摘要(10 条)
 
 I 中文注释 ✓ II 中文文档 ✓ III DeerFlow 复用(21 点验证,核心零改动)
-IV 图谱探索(codebase-memory)✓ V 不过度设计(mock 退路,无队列,无 RAG)
+IV 图谱探索(codebase-memory)✓ V 不过度设计(无队列,无 RAG;008 已移除 mock 退路)
 VI 参考 docs/00-08 ✓ VII 卡点及时上报(密钥/OSS 均报)✓ VIII Figma 设计稿对照
 IX/X 长任务可观察(每阶段日志/耗时/重试)。
 
