@@ -10,7 +10,8 @@
 Python 3.12+ / Node.js 22+ / uv(可选 uv sync)
 依赖:MySQL 8(或默认 SQLite 零依赖,演示可用)、Redis(画像缓存,可禁用)
 模型:云端 API(数学 Qwen3.5-4B / DeepSeek v4 Flash、OCR GLM-OCR),密钥由用户提供;
-      密钥未配置时批改走 mock 退路(宪法 VII:先报告再实现,不硬扛)
+      密钥未配置时批改**显式失败**(抛 MODEL_NOT_CONFIGURED / OCR_NOT_CONFIGURED),
+      界面展示后端记录的失败原因,不再返回 mock 占位结果(008 FR-001/FR-004)
 ```
 
 ## 2. 数据初始化
@@ -94,4 +95,9 @@ python3 -m evals.runtime.run --gate analysis_calculation
 
 ## 6. 前端页面(对照 Figma 设计稿,宪法 VIII)
 
-Teacher 01-06 / Student 07-08 共 8 页,见 plan.md 前端设计基准节。
+Teacher 01-06 / Student 07-08,另含 09 Class Overview、10 Login & Demo,共 10 页,
+见 plan.md 前端设计基准节。
+
+其中 01 工作台 / 02 班级画像 / 03 学生画像 / 09 班级总览四个**聚合视图**提供右上角学科切换,
+所选学科写入 URL 查询参数(如 `?subject=math`,缺省数学),刷新与分享链接保持;
+04—08 为单份作业或单次提交页面,学科只读展示、不提供切换(008 FR-009)。
