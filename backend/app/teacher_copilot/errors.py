@@ -118,3 +118,14 @@ class OcrNotConfigured(TcError):
 
     code = "OCR_NOT_CONFIGURED"
     http_status = 503
+
+
+class OcrResultEmpty(TcError):
+    """识别成功返回但没认出任何内容:显式失败,不拿空作答继续批改。
+
+    与"未配置密钥"区分开:这里是识别跑过了但结果为空(本地/base64 图片对简单图
+    返回空是已知常见结果)。若继续批改,会产出一个"看似正常"却毫无依据的分数。
+    """
+
+    code = "OCR_EMPTY_RESULT"
+    http_status = 422

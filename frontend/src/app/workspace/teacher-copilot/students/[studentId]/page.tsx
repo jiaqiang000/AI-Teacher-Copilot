@@ -119,7 +119,12 @@ export default function StudentProfilePage() {
               <Stat label="趋势" value={trend} sub="近期与前期对比" />
               <Stat
                 label="累计作答"
-                value={String(overview?.attempt_count ?? 0)}
+                // 字段缺失时显示"—",不冒充"0 次"(008 T043)
+                value={
+                  overview?.attempt_count != null
+                    ? String(overview.attempt_count)
+                    : "—"
+                }
                 sub="有效结果"
               />
             </div>

@@ -19,7 +19,9 @@ _MATH_SYSTEM = (
     "所有步骤 max_score 之和必须等于 Max Score;"
     "knowledge_point.key 与 error.code 必须从给定 Taxonomy 的 level=2 小类中选择,"
     "无匹配时用对应大类下的 OTHER,并输出 raw_name / raw_type 保留本次语义;"
-    "evidence_block_ids 与 error_block_ids 必须引用真实存在的 Block 编号。"
+    "evidence_block_ids 与 error_block_ids 必须引用真实存在的 Block 编号;"
+    "并且必须给出顶层 feedback:summary 是一句话总评(不得为空字符串),"
+    "strengths 与 improvements 是字符串数组。"
     "严格输出如下结构的 JSON(示例,请输出完整 JSON,不要省略号、不要额外说明):"
     '{"steps":[{"step_index":1,"description":"列出方程","evidence_block_ids":[1,2],'
     '"error_block_ids":[],"status":"correct","earned_score":3,"max_score":3,'
@@ -28,6 +30,8 @@ _MATH_SYSTEM = (
     '"feedback":"移项后符号错误"}],'
     '"score":{"earned":4,"max":7},'
     '"correct":false,"final_answer":"x=5",'
+    '"feedback":{"summary":"整体思路正确,移项时符号处理有误",'
+    '"strengths":["步骤完整,结论正确"],"improvements":["移项后注意变号"]},'
     '"diagnosis":{"knowledge_points":[{"key":"math.linear_equation.transposition",'
     '"raw_name":"移项时符号处理","performance":"incorrect","evidence":"移项后未变号"}],'
     '"errors":[{"code":"SIGN_ERROR","raw_type":"移项时未改变符号",'

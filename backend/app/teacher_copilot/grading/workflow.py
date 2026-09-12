@@ -18,6 +18,7 @@ from sqlalchemy import select
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.grading import GradingResult, GradingResultError, GradingResultKnowledgePoint, OcrResult
 from app.teacher_copilot.db.models.homework import Question
+from app.teacher_copilot.errors import OcrResultEmpty
 from app.teacher_copilot.grading.assembler import GradingResultAssembler
 from app.teacher_copilot.grading.english_grading import run_english_grading
 from app.teacher_copilot.grading.math_grading import run_math_grading
@@ -80,6 +81,13 @@ async def run_grading_workflow(submission_id: str) -> None:
             logger.info("[%s] OCR 完成(耗时 %.1fs, blocks=%d)", submission_id,
                         time.time() - t_ocr, len(ocr_result.get("layout_details", [])))
             await _persist_ocr(submission_id, ocr_result)
+
+        # 空识别必须显式失败(008 T041):没认出任何 Block 就等于没有学生作答可批,
+        # 继续走下去只会产出一个"看似正常"却毫无依据的分数。
+        if not (ocr_result.get("layout_details") or []):
+            raise OcrResultEmpty(
+                "识别未得到任何内容,无法批改;请重新上传更清晰的作答图片"
+            )
 
         # 读取题目业务属性(确定性路由,不再让模型识别学科/难度)
         question = await _load_question(sub.question_id)
@@ -190,15 +198,20 @@ async def _get_ocr(submission_id: str) -> OcrResult | None:
 
 
 async def _persist_ocr(submission_id: str, ocr_result: dict) -> None:
-    """持久化 OCRResult(核心证据,md_results + layout_details JSON)。"""
+    """持久化 OCRResult(核心证据,md_results + layout_details JSON)。
+
+    状态按实际内容判定:没认出任何 Block 时不得记为 SUCCEEDED——
+    否则"识别失败"在证据表里会显示成"识别成功"(008 T041)。
+    """
+    blocks = ocr_result.get("layout_details") or []
     async with get_session() as session:
         session.add(OcrResult(
             ocr_result_id=f"ocr_{submission_id}",
             submission_id=submission_id,
             model="glm-ocr",
-            status="SUCCEEDED",
+            status="SUCCEEDED" if blocks else "EMPTY",
             md_results=ocr_result.get("md_results", ""),
-            layout_details=ocr_result.get("layout_details", []),
+            layout_details=blocks,
         ))
         await session.commit()
 

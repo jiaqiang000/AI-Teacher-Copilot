@@ -161,7 +161,10 @@ class AnalysisCalculationV1(BaseRepository):
             max_score = sum(
                 r["_max"] for r in results if r["student_id"] == sid
             )
-            rates.append(earned / max_score if max_score else 0)
+            if max_score <= 0:
+                # 满分非正是数据异常:跳过该生,不按 0 分计入(否则把均分拉低,008 T042)
+                continue
+            rates.append(earned / max_score)
         avg = round(sum(rates) / len(rates), 4) if rates else None
         dist = {
             "below_60": sum(1 for x in rates if x < 0.60),
@@ -223,7 +226,10 @@ class AnalysisCalculationV1(BaseRepository):
                     max_score = sum(
                         r["_max"] for r in results if r["student_id"] == sid
                     )
-                    rates.append(earned / max_score if max_score else 0)
+                    if max_score <= 0:
+                        # 满分非正是数据异常:跳过,不按 0 分计入(008 T042)
+                        continue
+                    rates.append(earned / max_score)
             hw_rate = round(sum(rates) / len(rates), 4) if rates else None
             if hw_rate is not None and hw_rate < 0.60:
                 reasons.append("LOW_HOMEWORK_SCORE")

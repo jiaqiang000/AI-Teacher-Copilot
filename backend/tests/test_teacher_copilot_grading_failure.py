@@ -26,19 +26,25 @@ from app.teacher_copilot.db.models.grading import GradingResult, OcrResult, Subm
 from app.teacher_copilot.db.models.homework import Question
 from app.teacher_copilot.errors import (
     GradingOutputInvalid,
+    InvalidArgument,
     ModelNotConfigured,
     OcrNotConfigured,
 )
 from app.teacher_copilot.grading.assembler import GradingResultAssembler
 from app.teacher_copilot.grading.validators.taxonomy_validator import TaxonomyValidator
-from app.teacher_copilot.grading.workflow import run_grading_workflow
+from app.teacher_copilot.grading.workflow import _persist_ocr, run_grading_workflow
 from app.teacher_copilot.models.clients.llm import LlmClient
 from app.teacher_copilot.models.clients.ocr import OcrClient
+from app.teacher_copilot.services.question_service import QuestionService
 from app.teacher_copilot.services.submission_service import SubmissionService
 
 SUBMISSION_ID = "sub_failpath_001"
 QUESTION_ID = "q_failpath_001"
 HOMEWORK_ID = "hw_failpath"
+# 识别结果为空(没有任何 Block)的提交:应显式失败而不是拿空作答批改
+EMPTY_OCR_SUBMISSION_ID = "sub_failpath_empty_ocr"
+# 仅用于直接验证 _persist_ocr 状态判定,不预置 OcrResult
+PERSIST_SUBMISSION_ID = "sub_failpath_persist"
 
 
 @pytest.fixture()
@@ -85,6 +91,25 @@ async def grading_database(tmp_path_factory: pytest.TempPathFactory):
                 "index": 1, "label": "formula", "content": "$$ 2x + 4 = 8 $$",
                 "bbox2d": [0, 0, 100, 40], "width": 100, "height": 600,
             }],
+        ))
+        # 识别结果为空(没有任何 Block)的提交:用于验证"空识别不得继续批改"
+        session.add(Submission(
+            submission_id=EMPTY_OCR_SUBMISSION_ID, student_id="stu_failpath_empty",
+            question_id=QUESTION_ID, homework_id=HOMEWORK_ID,
+            image_url="https://example.com/blank.png",
+            status="PENDING", current_stage="QUEUED",
+        ))
+        session.add(OcrResult(
+            ocr_result_id=f"ocr_{EMPTY_OCR_SUBMISSION_ID}",
+            submission_id=EMPTY_OCR_SUBMISSION_ID,
+            model="glm-ocr", status="SUCCEEDED", md_results="", layout_details=[],
+        ))
+        # 不预置 OcrResult:留给 _persist_ocr 状态判定用例直接调用
+        session.add(Submission(
+            submission_id=PERSIST_SUBMISSION_ID, student_id="stu_failpath_persist",
+            question_id=QUESTION_ID, homework_id=HOMEWORK_ID,
+            image_url="https://example.com/persist.png",
+            status="PENDING", current_stage="QUEUED",
         ))
         await session.commit()
 
@@ -159,6 +184,9 @@ def test_assembler_does_not_fill_default_empty_diagnosis():
     简化结构归一分支会自行构造 diagnosis(两个键都在,空数组合法);
     但标准结构下模型漏给 diagnosis 时必须保持缺失——补成空诊断会让
     校验层把它误判为"学生没有任何知识点问题、也没有任何错误"。
+
+    注:feedback 自 008 T040 起是必需输出,故这里显式给出,
+    以便把"diagnosis 缺失"这一条单独观察出来。
     """
     assembled = GradingResultAssembler.assemble_math(
         {
@@ -168,6 +196,7 @@ def test_assembler_does_not_fill_default_empty_diagnosis():
                 "status": "correct", "earned_score": 10, "max_score": 10,
             }],
             "score": {"earned": 10, "max": 10},
+            "feedback": {"summary": "解题正确"},
         },
         "math", "calculation", "easy",
     )
@@ -199,3 +228,148 @@ async def test_grading_workflow_fails_explicitly_without_key_and_writes_no_resul
     assert submission.error_code == "MODEL_NOT_CONFIGURED"
     assert submission.error_message  # 失败信息本身要落库,供前端展示(FR-004a)
     assert result_rows == 0
+
+
+# ---------------------------------------------------------------- feedback 必需(T040)
+
+
+def _math_output(**overrides) -> dict:
+    """构造一份可通过数学契约校验的输出,便于逐项破坏。"""
+    base = {
+        "steps": [{
+            "step_index": 1, "description": "整题作答", "evidence_block_ids": [],
+            "error_block_ids": [], "status": "correct",
+            "earned_score": 10, "max_score": 10, "feedback": "列式与计算均正确",
+        }],
+        "score": {"earned": 10, "max": 10},
+        "diagnosis": {"knowledge_points": [], "errors": []},
+        "feedback": {"summary": "解题正确", "strengths": ["步骤完整"], "improvements": []},
+    }
+    base.update(overrides)
+    return base
+
+
+def test_assembler_requires_feedback_summary_for_math():
+    """feedback 是必需输出:缺失或空白一律判不合格,不再兜底成空评语(008 T040)。
+
+    在此之前的实现用 ``output.get("feedback", {"summary": ""})`` 兜底,把
+    "模型没给评语"伪装成"这道题没什么可说的"——教师端因此永远看不到数学评语。
+    """
+    assembled = GradingResultAssembler.assemble_math(
+        _math_output(), "math", "calculation", "easy"
+    )
+    assert assembled["feedback"] == {
+        "summary": "解题正确", "strengths": ["步骤完整"], "improvements": [],
+    }
+
+    broken_cases = {
+        "缺 feedback 键": {k: v for k, v in _math_output().items() if k != "feedback"},
+        "summary 全空白": _math_output(feedback={"summary": "   "}),
+        "summary 非字符串": _math_output(feedback={"summary": None}),
+        "feedback 不是对象": _math_output(feedback="写得好"),
+    }
+    for broken in broken_cases.values():
+        with pytest.raises(GradingOutputInvalid):
+            GradingResultAssembler.assemble_math(
+                broken, "math", "calculation", "easy"
+            )
+
+
+def test_assembler_simplified_math_needs_feedback_too():
+    """简化结构归一分支不能绕过 feedback 必需校验(008 T040)。"""
+    simplified = {
+        "score": 10, "max_score": 10, "is_correct": True,
+        "feedback": {"summary": "全对"},
+    }
+    assembled = GradingResultAssembler.assemble_math(
+        simplified, "math", "calculation", "easy"
+    )
+    assert assembled["feedback"]["summary"] == "全对"
+
+    with pytest.raises(GradingOutputInvalid):
+        GradingResultAssembler.assemble_math(
+            {"score": 10, "max_score": 10, "is_correct": True},
+            "math", "calculation", "easy",
+        )
+
+
+def test_assembler_requires_feedback_summary_for_english():
+    """英语侧同一口径(008 T040)。"""
+    dims = ("content", "organization", "grammar", "vocabulary")
+    base = {
+        "english_essay_detail": {
+            "dimension_scores": {d: {"score": 4, "max_score": 5} for d in dims},
+            "evidence": {d: ["证据"] for d in dims},
+        },
+    }
+    assembled = GradingResultAssembler.assemble_english(
+        {**base, "feedback": {"summary": "整体不错"}}, "english", "essay"
+    )
+    assert assembled["feedback"]["summary"] == "整体不错"
+
+    with pytest.raises(GradingOutputInvalid):
+        GradingResultAssembler.assemble_english(base, "english", "essay")
+
+
+# ---------------------------------------------------------------- 空识别不得继续(T041)
+
+
+@pytest.mark.asyncio
+async def test_persist_ocr_does_not_mark_empty_result_as_succeeded(grading_database):
+    """识别结果为空时证据状态不得写成 SUCCEEDED(008 T041)。
+
+    否则"识别失败"在证据表里看起来就是"识别成功"。
+    """
+    await _persist_ocr(PERSIST_SUBMISSION_ID, {"md_results": "", "layout_details": []})
+
+    async with get_session() as session:
+        status = await session.scalar(
+            select(OcrResult.status).where(
+                OcrResult.submission_id == PERSIST_SUBMISSION_ID
+            )
+        )
+
+    assert status == "EMPTY"
+
+
+@pytest.mark.asyncio
+async def test_empty_ocr_result_fails_instead_of_grading_nothing(
+    grading_database, no_api_keys
+):
+    """空识别必须显式失败:不得拿空作答产出一个"看似正常"的分数(008 T041)。"""
+    await run_grading_workflow(EMPTY_OCR_SUBMISSION_ID)
+
+    async with SubmissionService() as service:
+        submission = await service.get(EMPTY_OCR_SUBMISSION_ID)
+    async with get_session() as session:
+        result_rows = await session.scalar(
+            select(func.count()).select_from(GradingResult).where(
+                GradingResult.submission_id == EMPTY_OCR_SUBMISSION_ID
+            )
+        )
+
+    assert submission.status == "FAILED"
+    assert submission.error_code == "OCR_EMPTY_RESULT"
+    assert submission.error_message
+    assert result_rows == 0
+
+
+# ---------------------------------------------------------------- 满分必须为正(T042)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_max_score", [0, -5])
+async def test_create_question_rejects_non_positive_max_score(
+    grading_database, bad_max_score
+):
+    """数学满分必须为正:0/负数会让得分率兜底成 0,把班级均分一起拉低(008 T042)。"""
+    async with QuestionService() as service:
+        with pytest.raises(InvalidArgument) as exc:
+            await service.create_question(
+                question_id=f"q_bad_max_{bad_max_score}",
+                homework_id=HOMEWORK_ID, subject="math",
+                question_type="calculation", content="解方程 2x = 4",
+                max_score=bad_max_score, difficulty="easy",
+            )
+
+    assert "满分" in exc.value.message

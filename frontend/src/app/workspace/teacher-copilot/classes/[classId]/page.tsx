@@ -67,7 +67,8 @@ export default function ClassDetailPage() {
             </h1>
             {profile && (
               <p className="text-muted-foreground">
-                {overview?.student_count ?? 0} 名学生 · 长期画像更新于刚刚
+                {/* 字段缺失时显示"—",不冒充"0 名学生"(008 T043) */}
+                {overview?.student_count ?? "—"} 名学生 · 长期画像更新于刚刚
               </p>
             )}
           </div>

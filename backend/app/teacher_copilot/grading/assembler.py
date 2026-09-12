@@ -23,6 +23,26 @@ class GradingResultAssembler:
     """批改结果组装器(纯函数,无副作用)。"""
 
     @staticmethod
+    def _require_feedback(output: dict) -> dict:
+        """校验并归一 feedback:summary 必须非空(008 T040)。
+
+        模型未给 feedback、或 summary 为空白时判为输出不合格——不得再用空默认值把它
+        伪装成"这道题没什么可说的",那正是"表象看不出来的错误"。
+        strengths / improvements 允许为空数组:整题全错时"没有优点"本身是合法结论。
+        """
+        fb = output.get("feedback")
+        if not isinstance(fb, dict):
+            raise GradingOutputInvalid("批改输出缺少 feedback 对象")
+        summary = fb.get("summary")
+        if not isinstance(summary, str) or not summary.strip():
+            raise GradingOutputInvalid("feedback.summary 缺失或为空")
+        return {
+            "summary": summary.strip(),
+            "strengths": list(fb.get("strengths") or []),
+            "improvements": list(fb.get("improvements") or []),
+        }
+
+    @staticmethod
     def assemble_math(output: dict, subject: str, question_type: str, difficulty: str | None) -> dict:
         """数学结果组装(容忍模型输出简化结构)。
 
@@ -46,6 +66,8 @@ class GradingResultAssembler:
                 "score": {"earned": earned, "max": max_score},
                 "correct": bool(output.get("is_correct")),
                 "final_answer": output.get("final_answer"),
+                # 归一结构里同样保留模型给的 feedback,后面的必需字段校验才看得见它
+                "feedback": output.get("feedback"),
                 "diagnosis": {
                     "knowledge_points": [],
                     "errors": [{"code": e, "raw_type": "", "knowledge_point_key": "",
@@ -79,7 +101,8 @@ class GradingResultAssembler:
             # 不在此处补默认空诊断(008 FR-002):一旦补上,"模型没给诊断"就变成
             # "学生没有任何知识点/错误",校验层再也看不到"缺字段"这一事实而放行。
             "diagnosis": output.get("diagnosis"),
-            "feedback": output.get("feedback", {"summary": "", "strengths": [], "improvements": []}),
+            # feedback 是必需输出:缺失即判不合格,不再兜底成空评语(008 T040)
+            "feedback": GradingResultAssembler._require_feedback(output),
             "english_essay_detail": None,
             "execution_meta": {"route": "math_strong_model"},
         }
@@ -102,7 +125,6 @@ class GradingResultAssembler:
         evidence = detail.get("evidence") or {}
         if set(evidence.keys()) - set(_ENGLISH_DIMS):
             raise GradingOutputInvalid("evidence 必须且只能四维键")
-        feedback = output.get("feedback", {})
         return {
             "score": {"earned": total, "max": 20, "rate": round(total / 20, 4)},
             "math_detail": None,
@@ -114,10 +136,7 @@ class GradingResultAssembler:
             # 不在此处补默认空诊断(008 FR-002):一旦补上,"模型没给诊断"就变成
             # "学生没有任何知识点/错误",校验层再也看不到"缺字段"这一事实而放行。
             "diagnosis": output.get("diagnosis"),
-            "feedback": {
-                "summary": feedback.get("summary", ""),
-                "strengths": feedback.get("strengths", []),
-                "improvements": feedback.get("improvements", []),
-            },
+            # feedback 是必需输出:缺失即判不合格,不再兜底成空评语(008 T040)
+            "feedback": GradingResultAssembler._require_feedback(output),
             "execution_meta": {"route": "english_two_stage"},
         }

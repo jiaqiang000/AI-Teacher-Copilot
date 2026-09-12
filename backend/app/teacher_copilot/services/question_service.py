@@ -52,8 +52,13 @@ class QuestionService(BaseRepository):
             if max_score != 20:
                 raise InvalidArgument("英语作文满分必须为 20")
             difficulty = None
-        elif not difficulty:
-            difficulty = await self._predict_difficulty(content)
+        else:
+            # 数学满分必须为正(008 T042):0 或负数会让得分率兜底成 0,
+            # 把这道题以及班级平均分一起拉低
+            if max_score <= 0:
+                raise InvalidArgument("题目满分必须大于 0")
+            if not difficulty:
+                difficulty = await self._predict_difficulty(content)
         no = await self._next_question_no(homework_id)
         q = Question(
             question_id=question_id, homework_id=homework_id, question_no=no,

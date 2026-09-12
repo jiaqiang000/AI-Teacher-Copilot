@@ -107,6 +107,11 @@ export default function AuthoringPage() {
       setError("请先选择题目难度");
       return;
     }
+    // 满分必须为正:0/负数会让后端拒绝,在前端先给明确提示(008 T042)
+    if (subject !== "english" && maxScore <= 0) {
+      setError("题目满分必须大于 0");
+      return;
+    }
     setError("");
     try {
       await addQuestion(homeworkId, {
@@ -314,6 +319,7 @@ export default function AuthoringPage() {
                 <input
                   className="w-16 rounded border px-1"
                   type="number"
+                  min={1}
                   value={maxScore}
                   onChange={(e) => setMaxScore(Number(e.target.value))}
                 />
@@ -339,7 +345,10 @@ export default function AuthoringPage() {
               </label>
               <button
                 className="rounded bg-gray-800 px-3 py-1 text-white disabled:opacity-50"
-                disabled={!homeworkId || (subject !== "english" && !difficulty)}
+                disabled={
+                  !homeworkId ||
+                  (subject !== "english" && (!difficulty || maxScore <= 0))
+                }
                 onClick={handleAdd}
               >
                 添加题目

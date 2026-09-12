@@ -317,19 +317,36 @@ function ResultView({
           ({Math.round(result.score.rate * 100)}%)
         </span>
       </div>
-      <p className="mt-2 text-sm">{result.feedback.summary}</p>
+      {/* 历史批改里 summary 可能为空(当时数学 prompt 没要求它),显式说明而不是留白行 */}
+      <p className="mt-2 text-sm">{result.feedback.summary || "暂无评语"}</p>
+      {/* 优点 / 改进建议:后端一直有这两个字段,此前界面从未展示(008 T040) */}
+      {result.feedback.strengths.length > 0 && (
+        <p className="text-muted-foreground mt-1 text-xs">
+          优点:{result.feedback.strengths.join(";")}
+        </p>
+      )}
+      {result.feedback.improvements.length > 0 && (
+        <p className="text-muted-foreground mt-1 text-xs">
+          改进建议:{result.feedback.improvements.join(";")}
+        </p>
+      )}
       {result.math_detail && (
         <ul className="mt-3 space-y-1 text-sm">
           {result.math_detail.steps.map((s) => (
-            <li
-              key={s.step_index}
-              className="flex justify-between border-b py-1"
-            >
-              <span>{s.description}</span>
-              <span className="text-muted-foreground">
-                {stepStatusLabel(s.status, labels)} · {s.earned_score}/
-                {s.max_score}
-              </span>
+            <li key={s.step_index} className="border-b py-1">
+              <div className="flex justify-between">
+                <span>{s.description}</span>
+                <span className="text-muted-foreground">
+                  {stepStatusLabel(s.status, labels)} · {s.earned_score}/
+                  {s.max_score}
+                </span>
+              </div>
+              {/* 每步评语:模型一直在产出,此前界面只显示总评语、把它丢掉了(008 T040) */}
+              {s.feedback && (
+                <p className="text-muted-foreground mt-0.5 text-xs">
+                  {s.feedback}
+                </p>
+              )}
             </li>
           ))}
         </ul>
