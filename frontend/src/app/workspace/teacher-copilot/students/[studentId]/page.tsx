@@ -3,6 +3,11 @@
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import {
+  SubjectEmptyState,
+  SubjectSwitcher,
+  useSubjectParam,
+} from "@/components/teacher-copilot/subject-context";
 import { WorkspaceHeader } from "@/components/workspace/workspace-container";
 import { useI18n } from "@/core/i18n/hooks";
 import {
@@ -18,13 +23,13 @@ import {
   trendLabel,
 } from "@/core/teacher-copilot/display-labels";
 
-const SUBJECT = process.env.NEXT_PUBLIC_TC_SUBJECT ?? "math";
-
 export default function StudentProfilePage() {
   const { t } = useI18n();
   const { studentId } = useParams<{ studentId: string }>();
   const searchParams = useSearchParams();
   const classId = searchParams.get("class_id") ?? undefined;
+  // 学科取自 URL 查询参数(缺省数学),切换学科作为查询上下文重新取画像
+  const subject = useSubjectParam();
   const [profile, setProfile] = useState<Awaited<
     ReturnType<typeof getStudentProfile>
   > | null>(null);
@@ -37,8 +42,8 @@ export default function StudentProfilePage() {
     setError("");
     setProfile(null);
     void Promise.all([
-      getStudentProfile(studentId, SUBJECT, classId),
-      getStudentHistory(studentId, SUBJECT, classId),
+      getStudentProfile(studentId, subject, classId),
+      getStudentHistory(studentId, subject, classId),
     ])
       .then(([studentProfile, studentHistory]) => {
         setProfile(studentProfile);
@@ -46,7 +51,7 @@ export default function StudentProfilePage() {
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
-  }, [classId, studentId]);
+  }, [classId, studentId, subject]);
 
   const overview = profile?.overview;
   const recurring = profile?.recurring_errors ?? [];
@@ -54,25 +59,28 @@ export default function StudentProfilePage() {
   const trend = overview?.trend
     ? trendLabel(overview.trend, t.teacherCopilot)
     : "—";
-  const displaySubject = subjectLabel(
-    basic?.subject ?? SUBJECT,
-    t.teacherCopilot,
-  );
+  const displaySubject = subjectLabel(subject, t.teacherCopilot);
+  // 该学生在此学科下是否完全没有批改数据:单对象页面据此整页显示空状态
+  const hasSubjectData = (overview?.attempt_count ?? 0) > 0;
 
   return (
     <div className="min-h-full w-full">
       <WorkspaceHeader />
       <main className="space-y-6 p-4 sm:p-8">
-        <header>
-          <h1 className="text-2xl font-bold">
-            {basic?.student_name ?? studentId} · 学生画像
-          </h1>
-          {basic && (
-            <p className="text-muted-foreground">
-              {basic.class_name ?? basic.class_id ?? "—"} · {displaySubject} ·{" "}
-              {algorithmVersionLabel(basic.algorithm_version, t.teacherCopilot)}
-            </p>
-          )}
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">
+              {basic?.student_name ?? studentId} · 学生画像
+            </h1>
+            {basic && (
+              <p className="text-muted-foreground">
+                {basic.class_name ?? basic.class_id ?? "—"} · {displaySubject} ·{" "}
+                {algorithmVersionLabel(basic.algorithm_version, t.teacherCopilot)}
+              </p>
+            )}
+          </div>
+          {/* 学科切换:即 Figma 中该页右上角的学科标签 */}
+          <SubjectSwitcher />
         </header>
 
         {loading && (
@@ -83,7 +91,11 @@ export default function StudentProfilePage() {
             加载失败: {error}
           </section>
         )}
-        {!loading && !error && profile && (
+        {/* 单对象页面:该学生在此学科下无数据时整页提示,不留大片空白 */}
+        {!loading && !error && profile && !hasSubjectData && (
+          <SubjectEmptyState />
+        )}
+        {!loading && !error && profile && hasSubjectData && (
           <>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <Stat

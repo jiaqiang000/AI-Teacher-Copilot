@@ -2,24 +2,34 @@
 
 规则(参考文档 01 §3.2,FR-002/003/004):
 - 来源:手动输入 / 上传图片 OCR 后确认 / 从题库复制
-- 数学自建题:Qwen 预判 difficulty(小模型),教师可修改
+- 数学自建题:小模型预判 difficulty,教师可修改;模型未给出合法难度时显式报错,
+  由教师手动输入,**不按题干字数猜测**(008 FR-008)
 - 题库复制:直接复制 difficulty,不重新预判
 - 英语作文:difficulty=null,固定 max_score=20
 """
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import select
 
 from app.teacher_copilot.db.models.homework import Question, QuestionBankItem
-from app.teacher_copilot.errors import InvalidArgument, QuestionNotFound
+from app.teacher_copilot.errors import InvalidArgument, QuestionNotFound, TcError
 from app.teacher_copilot.models.clients.llm import LlmClient
 from app.teacher_copilot.repositories.mysql.base import BaseRepository, wrap_data_error
 
+logger = logging.getLogger("teacher_copilot.question")
+
 _DIFFICULTY_PROMPT = (
     "你是一名数学教师,请判断下面这道数学题的难度(easy/medium/hard),只输出 JSON:"
-    '{"difficulty": "easy"}。题目:{content}'
+    # 示例 JSON 的花括号须转义,否则 str.format 会把 {"difficulty": ...} 当成占位符,
+    # 每次都抛 KeyError——此前该异常被静默兜底吞掉,导致"模型预判"实际从未执行
+    '{{"difficulty": "easy"}}。题目:{content}'
 )
+
+# 难度预判失败时的统一提示:面向教师,明确要求手动输入
+_DIFFICULTY_UNDETERMINED_HINT = "无法自动判定题目难度,请手动选择难度后重试"
 
 
 class QuestionService(BaseRepository):
@@ -28,7 +38,6 @@ class QuestionService(BaseRepository):
     def __init__(self, llm: LlmClient | None = None) -> None:
         super().__init__()
         self._llm = llm or LlmClient()
-        self._mock_diff: dict[str, str] = {}  # mock 模式下按题目哈希稳定返回难度
 
     async def create_question(
         self, *, question_id: str, homework_id: str, subject: str,
@@ -71,19 +80,33 @@ class QuestionService(BaseRepository):
         return max(nos, default=0) + 1
 
     async def _predict_difficulty(self, content: str) -> str:
-        """数学自建题难度预判(mock 模式:按内容长度稳定返回)。"""
+        """数学自建题难度预判(只采信模型返回的合法档位)。
+
+        模型未返回 easy/medium/hard 时显式失败,由教师手动输入(008 FR-008)。
+        原先"按题干字数猜测"的兜底已移除:那种猜测会把"模型没给出难度"伪装成
+        一个看起来合理的档位,使问题永远暴露不出来。
+        注意保留的是**预判能力本身**(参考方案:预判 → 教师确认 / 修改),
+        移除的只是猜测兜底。
+        """
         try:
             resp = await self._llm.generate_json(
                 model_kind="small", prompt=_DIFFICULTY_PROMPT.format(content=content)
             )
-            diff = resp.get("difficulty")
-            if diff in ("easy", "medium", "hard"):
-                return diff
-        except Exception:
-            pass
-        # mock 稳定规则:少于 40 字 → easy;少于 80 字 → medium;否则 hard
-        n = len(content)
-        return "easy" if n < 40 else "medium" if n < 80 else "hard"
+        except TcError:
+            # 专用错误码(如 MODEL_NOT_CONFIGURED)直接上报,便于定位根因
+            raise
+        except Exception as exc:
+            logger.warning("难度预判调用失败,改由教师手动输入: %s", exc)
+            raise InvalidArgument(
+                _DIFFICULTY_UNDETERMINED_HINT, code="DIFFICULTY_UNDETERMINED"
+            ) from exc
+        diff = resp.get("difficulty")
+        if diff not in ("easy", "medium", "hard"):
+            logger.warning("难度预判返回非法值 %r,改由教师手动输入", diff)
+            raise InvalidArgument(
+                _DIFFICULTY_UNDETERMINED_HINT, code="DIFFICULTY_UNDETERMINED"
+            )
+        return diff
 
     async def copy_from_bank(
         self, *, question_id: str, homework_id: str, bank_item_id: str, max_score: int,

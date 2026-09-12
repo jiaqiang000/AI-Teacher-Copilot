@@ -49,7 +49,9 @@ export default function AuthoringPage() {
   const [content, setContent] = useState("");
   const [qtype, setQtype] = useState("calculation");
   const [maxScore, setMaxScore] = useState(10);
-  const [difficulty, setDifficulty] = useState("easy");
+  // 难度不设默认值:数学题必须由教师显式确认后才能添加(008 FR-008)。
+  // 此前硬编码为 "easy",导致教师被默认成"易"且从不做选择。
+  const [difficulty, setDifficulty] = useState("");
   const [homeworkStatus, setHomeworkStatus] = useState("");
   const [publishHint, setPublishHint] = useState("");
   const [error, setError] = useState("");
@@ -100,6 +102,11 @@ export default function AuthoringPage() {
       setError("题目内容不能为空");
       return;
     }
+    // 难度不再有默认值:数学题未显式选择难度时不得提交(008 FR-008)
+    if (subject !== "english" && !difficulty) {
+      setError("请先选择题目难度");
+      return;
+    }
     setError("");
     try {
       await addQuestion(homeworkId, {
@@ -107,13 +114,20 @@ export default function AuthoringPage() {
         question_type: qtype,
         content,
         max_score: maxScore,
-        difficulty,
+        difficulty: difficulty || null,
       });
       setQuestions([
         ...questions,
-        { question_type: qtype, content, max_score: maxScore, difficulty },
+        {
+          question_type: qtype,
+          content,
+          max_score: maxScore,
+          difficulty: difficulty || null,
+        },
       ]);
       setContent("");
+      // 下一题重新显式确认难度,避免沿用上一题的选择
+      setDifficulty("");
     } catch (e) {
       setError((e as Error).message);
     }
@@ -141,7 +155,7 @@ export default function AuthoringPage() {
         setContent(res.text);
         setOcrHint("✓ OCR 已回填(可修改后再添加)");
       } else {
-        setOcrHint("OCR 未识别到文本,请手动输入(密钥未配置时为演示模式)");
+        setOcrHint("OCR 未识别到文本,请手动输入");
       }
     } catch (e) {
       setOcrHint(`上传/识别失败:${(e as Error).message}`);
@@ -310,6 +324,8 @@ export default function AuthoringPage() {
                   value={difficulty}
                   onChange={(e) => setDifficulty(e.target.value)}
                 >
+                  {/* 未选择时必须显式选一档,不提供默认档 */}
+                  <option value="">请选择</option>
                   <option value="easy">
                     {difficultyLabel("easy", t.teacherCopilot)}
                   </option>
@@ -323,7 +339,7 @@ export default function AuthoringPage() {
               </label>
               <button
                 className="rounded bg-gray-800 px-3 py-1 text-white disabled:opacity-50"
-                disabled={!homeworkId}
+                disabled={!homeworkId || (subject !== "english" && !difficulty)}
                 onClick={handleAdd}
               >
                 添加题目

@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import {
+  SubjectEmptyState,
+  SubjectSwitcher,
+  useSubjectParam,
+  withSubject,
+} from "@/components/teacher-copilot/subject-context";
 import { WorkspaceHeader } from "@/components/workspace/workspace-container";
 import { useI18n } from "@/core/i18n/hooks";
 import { getClassProfile } from "@/core/teacher-copilot/api";
@@ -16,11 +22,11 @@ import {
   trendLabel,
 } from "@/core/teacher-copilot/display-labels";
 
-const SUBJECT = process.env.NEXT_PUBLIC_TC_SUBJECT ?? "math";
-
 export default function ClassDetailPage() {
   const { t } = useI18n();
   const { classId } = useParams<{ classId: string }>();
+  // 学科取自 URL 查询参数(缺省数学),切换学科作为查询上下文重新取画像
+  const subject = useSubjectParam();
   const [profile, setProfile] = useState<Awaited<
     ReturnType<typeof getClassProfile>
   > | null>(null);
@@ -31,11 +37,11 @@ export default function ClassDetailPage() {
     setLoading(true);
     setError("");
     setProfile(null);
-    getClassProfile(classId, SUBJECT)
+    getClassProfile(classId, subject)
       .then(setProfile)
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
-  }, [classId]);
+  }, [classId, subject]);
 
   const weak = profile?.weak_points ?? [];
   const errors = profile?.common_errors ?? [];
@@ -46,24 +52,27 @@ export default function ClassDetailPage() {
   const trend = overview?.trend
     ? trendLabel(overview.trend, t.teacherCopilot)
     : "—";
-  const displaySubject = subjectLabel(
-    profile?.basic?.subject ?? SUBJECT,
-    t.teacherCopilot,
-  );
+  const displaySubject = subjectLabel(subject, t.teacherCopilot);
+  // 本班在该学科下是否完全没有批改数据:单对象页面据此整页显示空状态
+  const hasSubjectData = (overview?.active_student_count ?? 0) > 0;
 
   return (
     <div className="min-h-full w-full">
       <WorkspaceHeader />
       <main className="space-y-6 p-4 sm:p-8">
-        <header>
-          <h1 className="text-2xl font-bold">
-            {className} · {displaySubject}
-          </h1>
-          {profile && (
-            <p className="text-muted-foreground">
-              {overview?.student_count ?? 0} 名学生 · 长期画像更新于刚刚
-            </p>
-          )}
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">
+              {className} · {displaySubject}
+            </h1>
+            {profile && (
+              <p className="text-muted-foreground">
+                {overview?.student_count ?? 0} 名学生 · 长期画像更新于刚刚
+              </p>
+            )}
+          </div>
+          {/* 学科切换:即 Figma 中该页右上角的学科标签 */}
+          <SubjectSwitcher />
         </header>
 
         {loading && (
@@ -74,7 +83,11 @@ export default function ClassDetailPage() {
             加载失败: {error}
           </section>
         )}
-        {!loading && !error && profile && (
+        {/* 单对象页面:本班在该学科下无数据时整页提示,不留大片空白 */}
+        {!loading && !error && profile && !hasSubjectData && (
+          <SubjectEmptyState />
+        )}
+        {!loading && !error && profile && hasSubjectData && (
           <>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <Stat
@@ -178,7 +191,10 @@ export default function ClassDetailPage() {
                     >
                       <Link
                         className="font-medium underline-offset-2 hover:underline"
-                        href={`/workspace/teacher-copilot/students/${student.student_id}?class_id=${classId}`}
+                        href={withSubject(
+                          `/workspace/teacher-copilot/students/${student.student_id}?class_id=${classId}`,
+                          subject,
+                        )}
                       >
                         {student.student_id}
                       </Link>

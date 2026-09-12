@@ -5,6 +5,12 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import {
+  SubjectEmptyState,
+  SubjectSwitcher,
+  useSubjectParam,
+  withSubject,
+} from "@/components/teacher-copilot/subject-context";
 import { WorkspaceHeader } from "@/components/workspace/workspace-container";
 import { useI18n } from "@/core/i18n/hooks";
 import {
@@ -20,12 +26,13 @@ import {
   trendLabel,
   type TeacherCopilotLabels,
 } from "@/core/teacher-copilot/display-labels";
-
-const SUBJECT = "math";
+import type { Subject } from "@/core/teacher-copilot/types";
 
 export default function DashboardPage() {
   const { t } = useI18n();
   const searchParams = useSearchParams();
+  // 学科改为视图上下文(URL 查询参数,缺省数学),不再写死 math(008 FR-009)
+  const subject = useSubjectParam();
   const deniedToastShown = useRef(false);
   const [classes, setClasses] = useState<
     Awaited<ReturnType<typeof getTeacherClasses>>
@@ -55,7 +62,7 @@ export default function DashboardPage() {
   useEffect(() => {
     void Promise.all([
       getTeacherClasses(),
-      getTeacherHomeworks({ subject: SUBJECT, limit: 20 }),
+      getTeacherHomeworks({ subject, limit: 20 }),
     ])
       .then(async ([classList, homeworkList]) => {
         setClasses(classList);
@@ -65,7 +72,7 @@ export default function DashboardPage() {
             try {
               return [
                 classSummary.class_id,
-                await getClassProfile(classSummary.class_id, SUBJECT),
+                await getClassProfile(classSummary.class_id, subject),
               ] as const;
             } catch {
               return null;
@@ -100,7 +107,7 @@ export default function DashboardPage() {
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [subject]);
 
   const attentionCount = Object.values(profiles).reduce(
     (sum, profile) => sum + profile.attention_students.length,
@@ -110,16 +117,26 @@ export default function DashboardPage() {
     (homework) => homework.status === "PUBLISHED",
   ).length;
   const firstProfile = classes[0] ? profiles[classes[0].class_id] : undefined;
+  // 多对象页面的空状态:按班级卡片各自判断;全部班级都无数据时另给一处整体提示
+  // (班级列表本身与学科无关,保留卡片以便继续进入某个班级)
+  const classesWithData = classes.filter(
+    (item) => (profiles[item.class_id]?.overview.active_student_count ?? 0) > 0,
+  ).length;
+  const noClassHasData = classes.length > 0 && classesWithData === 0;
 
   return (
     <div className="min-h-full w-full">
       <WorkspaceHeader />
       <main className="space-y-8 p-4 sm:p-8">
-        <header>
-          <h1 className="text-2xl font-bold">教师工作台</h1>
-          <p className="text-muted-foreground">
-            今天先处理最值得关注的班级与作业
-          </p>
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">教师工作台</h1>
+            <p className="text-muted-foreground">
+              今天先处理最值得关注的班级与作业
+            </p>
+          </div>
+          {/* 学科切换:工作台同属聚合视图,与其他三个页面一并纳入切换范围 */}
+          <SubjectSwitcher />
         </header>
 
         {/* 体验指引(US5:登录方式/建议步骤/角色切换) */}
@@ -183,7 +200,10 @@ export default function DashboardPage() {
                   <h2 className="text-lg font-semibold">我的班级</h2>
                   <Link
                     className="text-sm underline-offset-2 hover:underline"
-                    href="/workspace/teacher-copilot/classes"
+                    href={withSubject(
+                      "/workspace/teacher-copilot/classes",
+                      subject,
+                    )}
                   >
                     查看全部
                   </Link>
@@ -191,16 +211,24 @@ export default function DashboardPage() {
                 {classes.length === 0 ? (
                   <p className="text-muted-foreground text-sm">暂无班级</p>
                 ) : (
-                  classes.map((classSummary) => (
-                    <ClassCard
-                      key={classSummary.class_id}
-                      classId={classSummary.class_id}
-                      name={classSummary.name}
-                      count={`${classSummary.student_count} 名学生`}
-                      profile={profiles[classSummary.class_id]}
-                      labels={t.teacherCopilot}
-                    />
-                  ))
+                  <>
+                    {noClassHasData && <SubjectEmptyState />}
+                    {classes.map((classSummary) => (
+                      <ClassCard
+                        key={classSummary.class_id}
+                        classId={classSummary.class_id}
+                        name={classSummary.name}
+                        count={`${classSummary.student_count} 名学生`}
+                        subject={subject}
+                        hasData={
+                          (profiles[classSummary.class_id]?.overview
+                            .active_student_count ?? 0) > 0
+                        }
+                        profile={profiles[classSummary.class_id]}
+                        labels={t.teacherCopilot}
+                      />
+                    ))}
+                  </>
                 )}
               </section>
               <section>
@@ -261,12 +289,16 @@ function ClassCard({
   classId,
   name,
   count,
+  subject,
+  hasData,
   profile,
   labels,
 }: {
   classId: string;
   name: string;
   count: string;
+  subject: Subject;
+  hasData: boolean;
   profile?: Awaited<ReturnType<typeof getClassProfile>>;
   labels: TeacherCopilotLabels;
 }) {
@@ -276,19 +308,26 @@ function ClassCard({
     : null;
   return (
     <Link
-      href={`/workspace/teacher-copilot/classes/${classId}`}
+      href={withSubject(`/workspace/teacher-copilot/classes/${classId}`, subject)}
       className="mb-2 block rounded-lg border p-4 transition hover:shadow-sm"
     >
       <div className="font-medium">{name}</div>
       <div className="text-muted-foreground text-xs">
-        {count} · {subjectLabel("math", labels)}
+        {count} · {subjectLabel(subject, labels)}
       </div>
-      <div className="mt-1 text-sm">
-        {trend ? trendLabel(trend, labels) : labels.unknownTrend}
-        {profile?.overview.avg_score_rate != null
-          ? ` · 平均 ${Math.round(profile.overview.avg_score_rate * 100)}%`
-          : ""}
-        {weak ? ` · ${weak}` : ""}
+      {/* 该班在所选学科下无数据时,在本卡片内提示,而不是留白 */}
+      <div className={hasData ? "mt-1 text-sm" : "text-muted-foreground mt-1 text-sm"}>
+        {hasData ? (
+          <>
+            {trend ? trendLabel(trend, labels) : labels.unknownTrend}
+            {profile?.overview.avg_score_rate != null
+              ? ` · 平均 ${Math.round(profile.overview.avg_score_rate * 100)}%`
+              : ""}
+            {weak ? ` · ${weak}` : ""}
+          </>
+        ) : (
+          "该学科暂无数据"
+        )}
       </div>
     </Link>
   );
