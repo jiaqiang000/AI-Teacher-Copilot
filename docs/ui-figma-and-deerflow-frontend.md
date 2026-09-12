@@ -96,7 +96,7 @@ AI Teacher Copilot — DeerFlow UI
 https://www.figma.com/design/0ugwazaOoaDw71Nlrak6tB
 ```
 
-当前核心 Frame：
+当前核心 Frame（10 个）：
 
 ```text
 Teacher
@@ -110,7 +110,13 @@ Teacher
 Student
 07 · Student Homework
 08 · Student Grading
+
+通用
+09 · Class Overview
+10 · Login & Demo
 ```
+
+另有 1 个非页面 Frame：`学科切换 · 状态与空态`，用于说明学科切换的三个状态（默认态、展开态、空状态）。它不是业务页面，不参与页面编号。
 
 当前 `01～06` Teacher Frames 使用统一 Teacher Workspace Sidebar。除工作台、班级、作业、学生、Teacher Copilot 等业务导航外，Sidebar 还包含“最近聊天”区域，用于表现历史 Teacher Copilot 会话入口。
 
@@ -402,14 +408,36 @@ Eval Runner / Behavior Checker
 
 | 页面 | 主要业务数据 | 说明 |
 |---|---|---|
-| `01 · Teacher Dashboard` | `Teacher / Class / Homework summary` | 教师工作台摘要；不是新的 Profile Source of Truth |
-| `02 · Class Detail` | `Class + ClassProfile + ClassStudent[] + HomeworkSummary[]` | 长期班级画像与学生 / 作业入口 |
-| `03 · Student Profile` | `Student + StudentProfile + GradingResult[] history` | 长期画像为结论；Grading History 用于证据下钻 |
-| `04 · Homework Authoring` | `Homework + Question[] + QuestionBankItem[]` | DRAFT 编辑、题库 Copy、difficulty 确认、发布 |
-| `05 · Homework Analysis` | `HomeworkAnalysis + QuestionAnalysis` | HomeworkAnalysis 为主；QuestionAnalysis 为题目下钻 |
-| `06 · Teacher Copilot Chat` | `DeerFlow Thread / Run + Teacher Tool / Skill Results` | Agent 最终回答必须基于 Tool 获取的正式业务事实 |
-| `07 · Student Homework` | `Homework + Question[] + Submission summary` | 展示题目列表和每题当前作答 / 批改状态 |
-| `08 · Student Grading` | `Submission + OCRResult + GradingResult` | Submission 管状态；OCRResult 只在错误定位等证据展示时需要；GradingResult 管最终结果 |
+| `01 · Teacher Dashboard` | `Teacher / Class / Homework summary` | 教师工作台摘要；不是新的 Profile Source of Truth；含学科切换 |
+| `02 · Class Detail` | `Class + ClassProfile + ClassStudent[] + HomeworkSummary[]` | 长期班级画像与学生 / 作业入口；含学科切换 |
+| `03 · Student Profile` | `Student + StudentProfile + GradingResult[] history` | 长期画像为结论；Grading History 用于证据下钻；含学科切换 |
+| `04 · Homework Authoring` | `Homework + Question[] + QuestionBankItem[]` | DRAFT 编辑、题库 Copy、difficulty 确认、发布；学科属于本次创建的 Homework 自身，只读展示 |
+| `05 · Homework Analysis` | `HomeworkAnalysis + QuestionAnalysis` | HomeworkAnalysis 为主；QuestionAnalysis 为题目下钻；学科由所属 Homework 决定，只读 |
+| `06 · Teacher Copilot Chat` | `DeerFlow Thread / Run + Teacher Tool / Skill Results` | Agent 最终回答必须基于 Tool 获取的正式业务事实；不显示学科切换 |
+| `07 · Student Homework` | `Homework + Question[] + Submission summary` | 展示题目列表和每题当前作答 / 批改状态；学科由所属 Homework 决定，只读 |
+| `08 · Student Grading` | `Submission + OCRResult + GradingResult` | Submission 管状态；OCRResult 只在错误定位等证据展示时需要；GradingResult 管最终结果；学科只读 |
+| `09 · Class Overview` | `Class[] + ClassProfile summary` | 班级总览与入口；含学科切换 |
+| `10 · Login & Demo` | 无业务数据 | 登录与体验账号入口；不涉及学科 |
+
+### 7.0 学科显示规则
+
+学科在本项目中**不是班级的属性**（同一班级可同时存在多学科作业），而是 Homework / Question / GradingResult 上的数据字段，画像按「班级 + 学科」聚合。因此前端对学科的处理分两类：
+
+```text
+聚合视图（跨班级或跨作业）
+= 01 Teacher Dashboard / 02 Class Detail / 03 Student Profile / 09 Class Overview
+→ 页面右上角提供学科切换；学科是查询上下文
+→ 缺省学科为 math；所选学科写入 URL 查询参数，刷新与分享链接保持
+→ 该学科在本班无数据时显示空状态提示，不留大面积空白
+
+单份作业 / 单次提交页面
+= 04 Homework Authoring / 05 Homework Analysis / 06 Teacher Copilot Chat
+  / 07 Student Homework / 08 Student Grading
+→ 不提供学科切换；学科是当前作业 / 提交自身的属性
+→ 学科在页面内只读展示（如 04 的信息卡「学科 数学」、05 的副标题）
+```
+
+学科当前支持的取值为 `math` / `english`。学生端不提供学科切换：学生看到的是被分配的作业，作业自身的学科已确定。
 
 ### 7.1 Class Detail
 
@@ -515,12 +543,16 @@ TeacherBusinessContext
 
 | 页面 | Context |
 |---|---|
-| `01 · Teacher Dashboard` | `teacher_id + class_refs` |
-| `02 · Class Detail` | `current_class_id + current_subject`（页面已经选定学科时） |
-| `03 · Student Profile` | `current_class_id + current_student_id + current_subject` |
-| `04 · Homework Authoring` | `current_class_id + current_homework_id + current_subject + current_question_refs`（已有 Question 时） |
+| `01 · Teacher Dashboard` | `teacher_id + class_refs + current_subject`（`current_subject` 由右上角学科切换产生） |
+| `02 · Class Detail` | `current_class_id + current_subject`（`current_subject` 由右上角学科切换产生，缺省 math） |
+| `03 · Student Profile` | `current_class_id + current_student_id + current_subject`（`current_subject` 来源同 `02`） |
+| `04 · Homework Authoring` | `current_class_id + current_homework_id + current_subject + current_question_refs`（`current_subject` 由该 Homework 决定，只读） |
 | `05 · Homework Analysis` | `current_class_id + current_homework_id + current_subject + current_question_refs`；打开具体题目时增加 `current_question_id` |
 | `06 · Teacher Copilot Chat` | 从业务页进入时继承来源页面 Context；直接打开 Chat 时 Context 可以为空 |
+| `07 · Student Homework` | `current_homework_id`（学生身份由登录态决定，不由页面传入） |
+| `08 · Student Grading` | `current_homework_id + current_question_id`（学生身份由登录态决定） |
+| `09 · Class Overview` | `teacher_id + current_subject`（`current_subject` 由右上角学科切换产生） |
+| `10 · Login & Demo` | 无业务 Context（登录页） |
 
 Context 原则：
 
