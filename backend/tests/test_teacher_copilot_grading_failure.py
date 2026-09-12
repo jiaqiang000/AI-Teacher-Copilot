@@ -21,6 +21,7 @@ import pytest_asyncio
 from sqlalchemy import func, select
 
 from app.teacher_copilot.api.routers.submissions import grading_result
+from app.teacher_copilot.api.serializers import normalize_feedback
 from app.teacher_copilot.config import settings
 from app.teacher_copilot.db import models  # noqa: F401  # 确保所有业务表注册
 from app.teacher_copilot.db.engine import create_all, dispose_db, get_session, init_db
@@ -411,3 +412,48 @@ async def test_grading_result_endpoint_normalizes_empty_feedback(grading_databas
         "strengths": [],
         "improvements": [],
     }
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ({}, {"summary": "", "strengths": [], "improvements": []}),
+        (None, {"summary": "", "strengths": [], "improvements": []}),
+        ("写得好", {"summary": "", "strengths": [], "improvements": []}),
+        ([], {"summary": "", "strengths": [], "improvements": []}),
+        ({"summary": "不错"}, {"summary": "不错", "strengths": [], "improvements": []}),
+        (
+            {"summary": None, "strengths": "x", "improvements": None},
+            {"summary": "", "strengths": [], "improvements": []},
+        ),
+        (
+            {"summary": "不错", "strengths": ["步骤完整"], "improvements": ["注意变号"]},
+            {"summary": "不错", "strengths": ["步骤完整"], "improvements": ["注意变号"]},
+        ),
+    ],
+)
+def test_normalize_feedback_always_returns_stable_shape(raw, expected):
+    """归一函数对任何不完整/非法输入都给出稳定形状(008 T044、T046)。"""
+    assert normalize_feedback(raw) == expected
+
+
+def test_all_feedback_outlets_reuse_the_shared_normalizer():
+    """所有暴露 `feedback` 的出口必须复用同一归一实现(008 T046)。
+
+    这里刻意做**源码级**断言:要防的不是某个函数的行为,而是"新增出口时忘了复用"
+    这一约定漂移——它已经发生过一次(`feedback` 只在其中一个出口补齐,另两个仍
+    原样返回,同一份数据出现两种形状)。
+    """
+    repo_root = Path(__file__).resolve().parents[1]
+    outlets = (
+        "app/teacher_copilot/api/routers/submissions.py",
+        "app/teacher_copilot/api/routers/profile.py",
+        "app/teacher_copilot/tools/profile.py",
+    )
+    for rel in outlets:
+        source = (repo_root / rel).read_text(encoding="utf-8")
+        assert "normalize_feedback(" in source, (
+            f"{rel} 暴露 feedback 却未复用 api/serializers.normalize_feedback"
+        )
+        assert '"feedback": g.feedback' not in source, f"{rel} 仍在原样输出 feedback"
+        assert '"feedback": row.feedback' not in source, f"{rel} 仍在原样输出 feedback"

@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.teacher_copilot.api.identity import get_student_id
 from app.teacher_copilot.api.response import fail, ok
+from app.teacher_copilot.api.serializers import normalize_feedback
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.grading import GradingResult, OcrResult
 from app.teacher_copilot.db.models.homework import Question
@@ -110,31 +111,12 @@ async def grading_result(submission_id: str):
         "question_type": row.question_type,
         "difficulty": row.difficulty,
         "score": {"earned": row.score_earned, "max": row.score_max, "rate": row.score_rate},
-        "feedback": _normalize_feedback(row.feedback),
+        "feedback": normalize_feedback(row.feedback),
         "diagnosis": await _load_diagnosis(row.grading_result_id),
         "math_detail": row.math_detail,
         "english_essay_detail": row.english_essay_detail,
         "execution_meta": row.execution_meta,
     })
-
-
-def _normalize_feedback(raw: object) -> dict:
-    """把 feedback 归一成稳定形状(008 T044)。
-
-    历史数据里存在 ``{}``(实测 1092 条里有 1089 条):早期写入时未补齐字段。
-    接口层统一补稳,所有消费方拿到的形状一致,不必各自防御——此前前端按
-    "三个字段必有"读 ``strengths.length``,在这些行上抛 TypeError 把页面打崩。
-    只归一"读出来的样子",不改数据库里的既有行(FR-013)。
-    """
-    fb = raw if isinstance(raw, dict) else {}
-    summary = fb.get("summary")
-    strengths = fb.get("strengths")
-    improvements = fb.get("improvements")
-    return {
-        "summary": summary if isinstance(summary, str) else "",
-        "strengths": list(strengths) if isinstance(strengths, list) else [],
-        "improvements": list(improvements) if isinstance(improvements, list) else [],
-    }
 
 
 async def _load_diagnosis(grading_result_id: str) -> dict:

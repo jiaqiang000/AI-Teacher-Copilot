@@ -15,6 +15,7 @@ from app.teacher_copilot.api.display_labels import (
     annotate_profile,
 )
 from app.teacher_copilot.api.identity import get_teacher_id
+from app.teacher_copilot.api.serializers import normalize_feedback
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.grading import GradingResult
 from app.teacher_copilot.db.models.org import ClassRoom, ClassStudent, Student
@@ -125,7 +126,7 @@ async def student_history(
                     "subject": g.subject, "question_type": g.question_type,
                     "difficulty": g.difficulty,
                     "score": {"earned": g.score_earned, "max": g.score_max, "rate": g.score_rate},
-                    "feedback": g.feedback,
+                    "feedback": normalize_feedback(g.feedback),
                     "created_at": g.created_at.isoformat() if g.created_at else None,
                 }
                 for g in rows

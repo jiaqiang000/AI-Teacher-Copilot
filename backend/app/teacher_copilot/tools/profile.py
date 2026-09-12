@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.teacher_copilot.api.identity import get_teacher_id_from_runtime
 from app.teacher_copilot.api.response import fail, ok
+from app.teacher_copilot.api.serializers import normalize_feedback
 from app.teacher_copilot.db.engine import get_session
 from app.teacher_copilot.db.models.grading import (
     GradingResult,
@@ -113,7 +114,7 @@ async def get_student_grading_history(
                 "subject": g.subject, "question_type": g.question_type,
                 "difficulty": g.difficulty,
                 "score": {"earned": g.score_earned, "max": g.score_max, "rate": g.score_rate},
-                "feedback": g.feedback,
+                "feedback": normalize_feedback(g.feedback),
                 # 标准 key/code + raw 语义:供 Skill 引用 performance / error 级证据
                 "knowledge_points": [
                     {"knowledge_point_key": kp.knowledge_point_key, "name": kp.name,
