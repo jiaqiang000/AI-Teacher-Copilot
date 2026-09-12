@@ -96,13 +96,21 @@ class QuestionService(BaseRepository):
             # 专用错误码(如 MODEL_NOT_CONFIGURED)直接上报,便于定位根因
             raise
         except Exception as exc:
-            logger.warning("难度预判调用失败,改由教师手动输入: %s", exc)
+            # 这条路径原先是"静默降级 + 字数猜测"的兜底点,按 FR-003 记 ERROR,
+            # 并带上足以定位的上下文(题干长度而非题干原文,避免把题目内容写进日志)
+            logger.error(
+                "难度预判调用失败,改由教师手动输入: content_len=%d, err=%s",
+                len(content), exc,
+            )
             raise InvalidArgument(
                 _DIFFICULTY_UNDETERMINED_HINT, code="DIFFICULTY_UNDETERMINED"
             ) from exc
         diff = resp.get("difficulty")
         if diff not in ("easy", "medium", "hard"):
-            logger.warning("难度预判返回非法值 %r,改由教师手动输入", diff)
+            logger.error(
+                "难度预判返回非法值 %r,改由教师手动输入: content_len=%d",
+                diff, len(content),
+            )
             raise InvalidArgument(
                 _DIFFICULTY_UNDETERMINED_HINT, code="DIFFICULTY_UNDETERMINED"
             )
