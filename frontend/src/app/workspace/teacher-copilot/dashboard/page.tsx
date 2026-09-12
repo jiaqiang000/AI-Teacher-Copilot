@@ -120,6 +120,10 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, [subject]);
 
+  // 有班级画像没取到时,聚合数字就是"不完整"的:
+  // attentionCount 只对成功取回画像的班级求和,失败的那个班直接不参与,
+  // 会静默少算却看不出异常。宁可不给数,也不给一个偏低却看似正常的数
+  const profilesIncomplete = Object.keys(profileErrors).length > 0;
   const attentionCount = Object.values(profiles).reduce(
     (sum, profile) => sum + profile.attention_students.length,
     0,
@@ -195,17 +199,19 @@ export default function DashboardPage() {
               />
               <StatCard
                 label="重点学生"
-                value={String(attentionCount)}
-                sub="需要关注"
+                value={profilesIncomplete ? "—" : String(attentionCount)}
+                sub={profilesIncomplete ? "部分班级加载失败" : "需要关注"}
               />
               <StatCard
                 label="最新平均得分"
                 value={
-                  firstProfile?.overview.avg_score_rate != null
-                    ? `${Math.round(firstProfile.overview.avg_score_rate * 100)}%`
-                    : "—"
+                  profilesIncomplete
+                    ? "—"
+                    : firstProfile?.overview.avg_score_rate != null
+                      ? `${Math.round(firstProfile.overview.avg_score_rate * 100)}%`
+                      : "—"
                 }
-                sub="首个班级画像"
+                sub={profilesIncomplete ? "部分班级加载失败" : "首个班级画像"}
               />
             </div>
 
