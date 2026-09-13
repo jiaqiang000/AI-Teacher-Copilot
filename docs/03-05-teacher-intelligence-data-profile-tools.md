@@ -1882,29 +1882,14 @@ question_id
 
 解析原则固定为：
 
-1. 优先使用当前 Teacher Business Context（教师业务上下文）中已经确定的对象；
+1. 需要发现班级时使用 `list_classes`；
 2. 需要发现班级学生时使用 `list_class_students`；
 3. 需要发现班级作业时使用 `list_class_homeworks`；
 4. 唯一匹配时直接继续；
 5. 存在多个候选、无法唯一确定时，通过 DeerFlow `ask_clarification` 请求教师确认；
 6. Teacher Agent 不得猜测 `student_id`、`class_id`、`homework_id` 或 `question_id`。
 
-例如教师说“第 8 题”时，系统先基于当前 `homework_id` 和 `Question.question_no = 8` 确定真实 `question_id`，再调用 `get_question_analysis`。
-
-如果当前页面已经明确当前学生和学科，例如 `03 · Student Profile`：
-
-```text
-current_student_id
-+
-current_subject
-
-→ 直接作为业务对象解析 Context 使用
-→ 不再为了确定“这个学生”而重复调用 list_class_students
-```
-
-完整字段定义与页面映射统一由 `docs/06-07-业务驱动的设计.md` 中的 `TeacherBusinessContext` 负责。
-
-Teacher Business Context 通过 DeerFlow `RunCreateRequest.context` 携带；但“把值放进 runtime context”不等于 LLM 自动可见，具体由 `TeacherBusinessContextMiddleware` 注入模型上下文。该 Middleware、Custom Agent 和 HITL 的完整实现统一见 `docs/06-07-业务驱动的设计.md`。
+例如教师说“八三班最近这次数学作业的第 8 题”时，系统先用 `list_class_homeworks` 确定 `homework_id`，再按 `Question.question_no = 8` 确定真实 `question_id`，然后调用 `get_question_analysis`。
 
 业务对象解析属于正式 Tool Calling 前的参数准备，不改变 Tool 本身的职责，也不新增 Entity Resolution Tool / Skill / Agent。
 
@@ -2423,11 +2408,8 @@ search_question_bank
 06–07 DeerFlow Teacher Custom Agent + 按需 Multi-Agent
 ```
 
-本文件只确定教育业务数据、算法和 Tool Contract。DeerFlow Tool 注册、Skill Runtime、Custom Agent、Teacher Business Context Middleware、HITL 与 Sub-Agent 的详细工程接入分别统一见：
+本文件只确定教育业务数据、算法和 Tool Contract。DeerFlow Tool 注册、Skill Runtime、Custom Agent、HITL 与 Sub-Agent 的详细工程接入分别统一见：
 
 - `docs/05-tool-skill.md`
 - `docs/06-07-业务驱动的设计.md`
 
-前端页面、Figma 与上述数据结构的消费映射统一见：
-
-- `docs/ui-figma-and-deerflow-frontend.md`

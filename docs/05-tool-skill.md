@@ -100,10 +100,9 @@ Teacher Business Context（教师业务上下文）
            继续执行
 ```
 
-对象解析固定遵循四条原则：
+对象解析固定遵循三条原则：
 
 ```text
-Context First（上下文优先）
 Unique Match First（唯一匹配直接继续）
 Clarify on Ambiguity（存在歧义才询问）
 Never Guess ID（禁止猜测业务 ID）
@@ -111,16 +110,16 @@ Never Guess ID（禁止猜测业务 ID）
 
 其中：
 
-- 当前页面或会话 Context 已经提供 `student_id / class_id / homework_id / question_id / subject` 时直接使用，不重复查询。
+- 需要发现班级时复用 `list_classes`。
 - 需要发现班级中的学生时复用 `list_class_students`。
 - 需要发现班级中的作业时复用 `list_class_homeworks`。
-- “第 8 题”通过当前 `homework_id + question_no = 8` 映射到真实 `question_id`。
+- “第 8 题”需要教师说明是哪份作业，再由 `homework_id + question_no = 8` 映射到真实 `question_id`。
 - 存在多个候选或无法唯一确定时，直接复用 DeerFlow 内置 `ask_clarification` Human-in-the-Loop 能力让教师确认。
 - Teacher Agent 不得根据姓名、题号等自然语言自行猜测 `student_id / class_id / homework_id / question_id`。
 
 本项目不新增 Entity Resolution Tool（实体解析工具）、Entity Resolution Skill（实体解析技能）或 Entity Resolution Agent（实体解析智能体）。`ask_clarification` 属于 DeerFlow Harness 的内置能力，不计入 AI Teacher Copilot 的 9 个业务 Tool，因此当前 Tool 数量不发生变化。
 
-具体哪个 Figma 页面提供哪些 Business Context，不属于 Tool Contract 本身；页面映射统一由 `docs/06-07-业务驱动的设计.md` 和 `docs/ui-figma-and-deerflow-frontend.md` 定义。
+本项目不做页面业务上下文传递：教师需在提问中说明班级、作业与题目，对象解析由 Tool 完成，这部分不属于 Tool Contract 本身。
 
 ### 1.2 Profile Derived Facts Boundary（画像派生事实边界）
 

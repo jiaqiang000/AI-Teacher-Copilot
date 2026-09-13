@@ -2172,6 +2172,3 @@ GradingResultMessage
 - `MySQL` 保存业务事实、OCR 证据、Taxonomy 标准参考字典和题库资源，为后续学生画像、班级学情分析和 Teacher Agent 提供可信数据基础。
 - 学生实时进度继续展示在 DeerFlow Chat 中：复用聊天容器、Message Timeline、ChainOfThought 类步骤 UI 和 StreamBridge 基础能力；`grading.*` 业务事件不伪装成 `AIMessage / reasoning / tool_calls`，页面刷新恢复仍以 `Submission.status / current_stage` 为准。
 
-页面信息架构、Figma Frame 与 DeerFlow Frontend 组件复用映射统一见：
-
-- `docs/ui-figma-and-deerflow-frontend.md`
